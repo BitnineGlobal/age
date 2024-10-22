@@ -22,6 +22,11 @@
 
 #include "nodes/ag_nodes.h"
 
+typedef struct perms_info {
+    List *varnames;
+    AclMode permission;
+} perms_info;
+
 /* cypher sub patterns/queries */
 typedef enum csp_kind
 {
@@ -88,12 +93,8 @@ typedef struct cypher_create
 {
     ExtensibleNode extensible;
     List *pattern; /* a list of cypher_paths */
+    perms_info *perms;
 } cypher_create;
-
-typedef struct perms_info {
-    List *varnames;
-    AclMode permission;
-} perms_info;
 
 typedef struct cypher_set
 {
@@ -136,6 +137,7 @@ typedef struct cypher_merge
 {
     ExtensibleNode extensible;
     Node *path;
+    perms_info *perms;
 } cypher_merge;
 
 /*

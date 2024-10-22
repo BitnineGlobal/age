@@ -5567,7 +5567,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
 
     if (clause->prev)
     {
-        handle_prev_clause(cpstate, query, clause->prev, true, NULL);
+        handle_prev_clause(cpstate, query, clause->prev, true, self->perms);
 
         target_nodes->flags |= CYPHER_CLAUSE_FLAG_PREVIOUS_CLAUSE;
     }
@@ -6579,12 +6579,6 @@ static Query *transform_cypher_merge(cypher_parsestate *cpstate,
     }
     else
     {
-        /* make the merge node into a match node */
-
-        /* TODO this is called above and appears redundant but needs to be */
-        /* looked into */
-        /* cypher_clause *merge_clause_as_match = convert_merge_to_match(self); */
-
         /*
          * Create the metadata needed for creating missing paths.
          */
@@ -6600,7 +6594,8 @@ static Query *transform_cypher_merge(cypher_parsestate *cpstate,
          * query. the merge execution phase will just pass the results up the
          * execution tree if the path exists.
          */
-        handle_prev_clause(cpstate, query, merge_clause_as_match, false, NULL);
+        handle_prev_clause(cpstate, query, merge_clause_as_match, false,
+                           self->perms);
 
         /*
          * For the metadata need to create paths, find the tuple position that

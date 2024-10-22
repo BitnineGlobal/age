@@ -273,8 +273,11 @@ static Node *build_list_comprehension_node(ColumnRef *var_name, Node *expr,
                                            int var_loc, int expr_loc,
                                            int where_loc,int mapping_loc);
 
+static perms_info *build_perms_info_for_create(List *pattern);
+static perms_info *build_perms_info_for_merge(cypher_path *path);
 static perms_info *build_perms_info_for_update(List *items, char *clause_name);
 static perms_info *build_perms_info_for_delete(List *items);
+static List *get_varnames_in_path(cypher_path *path);
 
 %}
 %%
@@ -1081,6 +1084,7 @@ create:
 
             n = make_ag_node(cypher_create);
             n->pattern = $2;
+            n->perms = build_perms_info_for_create($2);
 
             $$ = (Node *)n;
         }
@@ -1223,6 +1227,7 @@ merge:
 
             n = make_ag_node(cypher_merge);
             n->path = $2;
+            n->perms = build_perms_info_for_merge((cypher_path *) $2);
 
             $$ = (Node *)n;
         }
@@ -3397,8 +3402,9 @@ static perms_info *build_perms_info_for_update(List *items, char *clause_name)
         {
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-                    is_remove ? errmsg("REMOVE clause must be in the format: REMOVE variable.property_name") :
-                                errmsg("SET clause expects a variable name")));
+                    is_remove ?
+                    errmsg("REMOVE clause must be in the format: REMOVE variable.property_name") :
+                    errmsg("SET clause expects a variable name")));
         }
 
         varname = strVal(linitial(cref->fields));
@@ -3445,4 +3451,74 @@ static perms_info *build_perms_info_for_delete(List *items)
     perms->permission |= ACL_SELECT;
 
     return perms;
+}
+
+static perms_info *build_perms_info_for_create(List *pattern)
+{
+    ListCell *lc;
+    List *varnames = NIL;
+    perms_info *perms;
+
+    perms = palloc0(sizeof(perms_info));
+
+    foreach(lc, pattern)
+    {
+        cypher_path *path = (cypher_path*) lfirst(lc);
+
+        varnames = list_concat(varnames, get_varnames_in_path(path));
+    }
+
+    perms->varnames = varnames;
+    perms->permission |= ACL_INSERT;
+
+    return perms;
+}
+
+static perms_info *build_perms_info_for_merge(cypher_path *path)
+{
+    perms_info *perms;
+
+    perms = palloc0(sizeof(perms_info));
+
+    perms->varnames = get_varnames_in_path(path);
+    perms->permission |= ACL_INSERT;
+    perms->permission |= ACL_SELECT;
+
+    return perms;
+}
+
+static List *get_varnames_in_path(cypher_path *path)
+{
+    ListCell *lc;
+    int i = 0;
+    List *varnames = NIL;
+
+    foreach(lc, path->path)
+    {
+        if (i % 2 == 0)
+        {
+            cypher_node *node = NULL;
+
+            node = lfirst(lc);
+
+            if (node->name)
+            {
+                varnames = lappend(varnames, node->name);
+            }
+        }
+        else
+        {
+            cypher_relationship *rel = NULL;
+
+            rel = lfirst(lc);
+
+            if (rel->name)
+            {
+                varnames = lappend(varnames, rel->name);
+            }
+        }
+        i++;
+    }
+
+    return varnames;
 }
