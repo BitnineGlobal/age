@@ -204,7 +204,8 @@ static bool variable_exists(cypher_parsestate *cpstate, char *name);
 static void add_volatile_wrapper_to_target_entry(List *target_list, int resno);
 static int get_target_entry_resno(List *target_list, char *name);
 static void handle_prev_clause(cypher_parsestate *cpstate, Query *query,
-                               cypher_clause *clause, bool first_rte);
+                               cypher_clause *clause, bool first_rte,
+                               perms_info *perms);
 static TargetEntry *placeholder_target_entry(cypher_parsestate *cpstate,
                                              char *name);
 static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
@@ -287,15 +288,9 @@ static Query *transform_cypher_call_subquery(cypher_parsestate *cpstate,
 /* transform */
 #define PREV_CYPHER_CLAUSE_ALIAS AGE_DEFAULT_ALIAS_PREFIX"previous_cypher_clause"
 #define CYPHER_OPT_RIGHT_ALIAS AGE_DEFAULT_ALIAS_PREFIX"cypher_optional_right"
-#define transform_prev_cypher_clause(cpstate, prev_clause, add_rte_to_query) \
+#define transform_prev_cypher_clause(cpstate, prev_clause, add_rte_to_query, perms) \
     transform_cypher_clause_as_subquery(cpstate, transform_cypher_clause, \
-                                        prev_clause, NULL, add_rte_to_query)
-ParseNamespaceItem
-*transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
-                                     transform_method transform,
-                                     cypher_clause *clause,
-                                     Alias *alias,
-                                     bool add_rte_to_query);
+                                        prev_clause, NULL, add_rte_to_query, perms)
 static Query *analyze_cypher_clause(transform_method transform,
                                     cypher_clause *clause,
                                     cypher_parsestate *parent_cpstate);
@@ -317,8 +312,6 @@ static List *add_target_to_group_list(cypher_parsestate *cpstate,
                                       List *targetlist, int location);
 static void advance_transform_entities_to_next_clause(List *entities);
 
-static ParseNamespaceItem *get_namespace_item(ParseState *pstate,
-                                              RangeTblEntry *rte);
 static List *make_target_list_from_join(ParseState *pstate,
                                         RangeTblEntry *rte);
 static FuncExpr *make_clause_func_expr(char *function_name,
@@ -338,6 +331,7 @@ static void setNamespaceLateralState(List *namespace, bool lateral_only,
 static bool isa_special_VLE_case(cypher_path *path);
 
 static ParseNamespaceItem *find_pnsi(cypher_parsestate *cpstate, char *varname);
+static RangeTblEntry *find_rte(List *rtable, char *varname);
 
 /*
  * transform a cypher_clause
@@ -1158,7 +1152,7 @@ static Query *transform_cypher_call_subquery(cypher_parsestate *cpstate,
     if (clause->prev)
     {
         /* we want to retain all previous range table entries */
-        handle_prev_clause(cpstate, query, clause->prev, false);
+        handle_prev_clause(cpstate, query, clause->prev, false, NULL);
     }
 
     /* transform the funccall and store it in a funcexpr node */
@@ -1314,7 +1308,7 @@ static Query *transform_cypher_delete(cypher_parsestate *cpstate,
     }
     else
     {
-        handle_prev_clause(cpstate, query, clause->prev, true);
+        handle_prev_clause(cpstate, query, clause->prev, true, self->perms);
     }
 
     delete_data->delete_items = transform_cypher_delete_item_list(cpstate,
@@ -1362,7 +1356,6 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
     ParseExprKind old_expr_kind;
     Node *funcexpr;
     TargetEntry *te;
-    ParseNamespaceItem *pnsi;
     bool is_list_comp = self->collect != NULL;
     bool has_agg =
         is_list_comp || has_a_cypher_list_comprehension_node(self->target->val);
@@ -1372,19 +1365,7 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
 
     if (clause->prev)
     {
-        int rtindex;
-
-        pnsi = transform_prev_cypher_clause(cpstate, clause->prev, true);
-        rtindex = list_length(pstate->p_rtable);
-        /* rte is the first RangeTblEntry in pstate */
-        if (rtindex != 1)
-        {
-            ereport(ERROR,
-                    (errcode(ERRCODE_DATATYPE_MISMATCH),
-                     errmsg("invalid value for rtindex")));
-        }
-
-        query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
+        handle_prev_clause(cpstate, query, clause->prev, true, NULL);
     }
 
     target_syntax_loc = exprLocation((const Node *) self->target);
@@ -1537,7 +1518,7 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
     }
     else
     {
-        handle_prev_clause(cpstate, query, clause->prev, true);
+        handle_prev_clause(cpstate, query, clause->prev, true, self->perms);
     }
 
     if (self->is_remove == true)
@@ -2138,7 +2119,7 @@ static Query *transform_cypher_return(cypher_parsestate *cpstate,
 
     if (clause->prev)
     {
-        transform_prev_cypher_clause(cpstate, clause->prev, true);
+        transform_prev_cypher_clause(cpstate, clause->prev, true, NULL);
     }
 
     query->targetList = transform_cypher_item_list(cpstate, self->items,
@@ -2382,7 +2363,7 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
         query->commandType = CMD_SELECT;
 
         pnsi = transform_cypher_clause_as_subquery(cpstate, transform, clause,
-                                                   NULL, true);
+                                                   NULL, true, NULL);
         
         Assert(pnsi != NULL);
         rtindex = list_length(pstate->p_rtable);
@@ -2527,8 +2508,8 @@ static Node *transform_clause_for_join(cypher_parsestate *cpstate,
     RangeTblRef *rtr;
 
     *nsitem = transform_cypher_clause_as_subquery(cpstate,
-                                               transform_cypher_clause,
-                                               clause, alias, false);
+                                                  transform_cypher_clause,
+                                                  clause, alias, false, NULL);
     *rte = (*nsitem)->p_rte;
 
     rtr = makeNode(RangeTblRef);
@@ -2749,28 +2730,7 @@ static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
     {
         if (clause->prev)
         {
-            RangeTblEntry *rte;
-            int rtindex;
-            ParseNamespaceItem *pnsi;
-
-            pnsi = transform_prev_cypher_clause(cpstate, clause->prev, true);
-            rte = pnsi->p_rte;
-            rtindex = list_length(pstate->p_rtable);
-            /* rte is the first RangeTblEntry in pstate */
-            if (rtindex != 1)
-            {
-                ereport(ERROR,
-                        (errcode(ERRCODE_DATATYPE_MISMATCH),
-                         errmsg("invalid value for rtindex")));
-            }
-
-            /*
-             * add all the target entries in rte to the current target list to pass
-             * all the variables that are introduced in the previous clause to the
-             * next clause
-             */
-            pnsi = get_namespace_item(pstate, rte);
-            query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
+            handle_prev_clause(cpstate, query, clause->prev, true, NULL);
         }
 
         transform_match_pattern(cpstate, query, self->pattern, where);
@@ -2902,7 +2862,7 @@ static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
 
     pnsi = transform_cypher_clause_as_subquery(child_parse_state,
                                               transform_cypher_clause, c,
-                                              NULL, true);
+                                              NULL, true, NULL);
 
     qry->targetList = makeTargetListFromPNSItem(p_child_parse_state, pnsi);
 
@@ -2950,8 +2910,7 @@ static Query *transform_cypher_sub_query(cypher_parsestate *cpstate,
 
     pnsi = transform_cypher_clause_as_subquery(child_parse_state,
                                                transform_cypher_clause,
-                                               c,
-                                               NULL, true);
+                                               c, NULL, true, NULL);
 
     qry->targetList = makeTargetListFromPNSItem(p_child_parse_state, pnsi);
 
@@ -5608,7 +5567,7 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
 
     if (clause->prev)
     {
-        handle_prev_clause(cpstate, query, clause->prev, true);
+        handle_prev_clause(cpstate, query, clause->prev, true, NULL);
 
         target_nodes->flags |= CYPHER_CLAUSE_FLAG_PREVIOUS_CLAUSE;
     }
@@ -6285,7 +6244,8 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
                                     transform_method transform,
                                     cypher_clause *clause,
                                     Alias *alias,
-                                    bool add_rte_to_query)
+                                    bool add_rte_to_query, 
+                                    perms_info *perms)
 {
     ParseState *pstate = (ParseState *)cpstate;
     Query *query;
@@ -6325,6 +6285,27 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
      */
 
     query = analyze_cypher_clause(transform, clause, cpstate);
+
+    if (perms)
+    {
+        ListCell *lc;
+        foreach(lc, perms->varnames)
+        { 
+            RangeTblEntry *rt;
+            char *varname;
+            
+            varname = lfirst(lc);
+            rt = find_rte(query->rtable, varname);
+
+            if (rt && (rt->rtekind == RTE_RELATION))
+            {
+                RTEPermissionInfo *rte_pi;
+
+                rte_pi = getRTEPermissionInfo(query->rteperminfos, rt);
+                rte_pi->requiredPerms = perms->permission;
+            }
+        }
+    }
 
     /* set pstate kind back */
     pstate->p_expr_kind = old_expr_kind;
@@ -6619,7 +6600,7 @@ static Query *transform_cypher_merge(cypher_parsestate *cpstate,
          * query. the merge execution phase will just pass the results up the
          * execution tree if the path exists.
          */
-        handle_prev_clause(cpstate, query, merge_clause_as_match, false);
+        handle_prev_clause(cpstate, query, merge_clause_as_match, false, NULL);
 
         /*
          * For the metadata need to create paths, find the tuple position that
@@ -7440,30 +7421,6 @@ static cypher_clause *convert_merge_to_match(cypher_merge *merge)
 }
 
 /*
- * Creates a namespace item for the given rte. boolean arguments will
- * let the rest of the ParseState know if the relation and/or columns are
- * visible, whether the rte is only usable in lateral joins, and if the rte
- * is accessible in lateral joins.
- */
-static ParseNamespaceItem *get_namespace_item(ParseState *pstate,
-                                              RangeTblEntry *rte)
-{
-    ParseNamespaceItem *nsitem = NULL;
-    ListCell *l;
-
-    foreach(l, pstate->p_namespace)
-    {
-        nsitem = lfirst(l);
-        if (rte == nsitem->p_rte)
-        {
-            return nsitem;
-        }
-    }
-    Assert(nsitem != NULL);
-    return NULL;
-}
-
-/*
  * Creates the function expression that represents the clause. Adds the
  * extensible node that represents the metadata that the clause needs to
  * handle the clause in the execution phase.
@@ -7549,13 +7506,14 @@ static void markRelsAsNulledBy(ParseState *pstate, Node *n, int jindex)
  * the query from the previous clause.
  */
 static void handle_prev_clause(cypher_parsestate *cpstate, Query *query,
-                               cypher_clause *clause, bool first_rte)
+                               cypher_clause *clause, bool first_rte,
+                               perms_info *perms)
 {
     ParseState *pstate = (ParseState *) cpstate;
     int rtindex;
     ParseNamespaceItem *pnsi;
 
-    pnsi = transform_prev_cypher_clause(cpstate, clause, true);
+    pnsi = transform_prev_cypher_clause(cpstate, clause, true, perms);
 
     rtindex = list_length(pstate->p_rtable);
 
@@ -7591,6 +7549,28 @@ ParseNamespaceItem *find_pnsi(cypher_parsestate *cpstate, char *varname)
         if (!strcmp(alias->aliasname, varname))
         {
             return pnsi;
+        }
+    }
+
+    return NULL;
+}
+
+static RangeTblEntry *find_rte(List *rtable, char *varname)
+{
+    ListCell *lc;
+
+    foreach (lc, rtable)
+    {
+        RangeTblEntry *rte = (RangeTblEntry *)lfirst(lc);
+        Alias *alias = rte->alias;
+        if (!alias)
+        {
+            continue;
+        }
+
+        if (!strcmp(alias->aliasname, varname))
+        {
+            return rte;
         }
     }
 

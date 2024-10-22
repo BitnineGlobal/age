@@ -273,6 +273,9 @@ static Node *build_list_comprehension_node(ColumnRef *var_name, Node *expr,
                                            int var_loc, int expr_loc,
                                            int where_loc,int mapping_loc);
 
+static perms_info *build_perms_info_for_update(List *items, char *clause_name);
+static perms_info *build_perms_info_for_delete(List *items);
+
 %}
 %%
 
@@ -1095,6 +1098,7 @@ set:
             n = make_ag_node(cypher_set);
             n->items = $2;
             n->is_remove = false;
+            n->perms = build_perms_info_for_update($2, "SET");
             n->location = @1;
 
             $$ = (Node *)n;
@@ -1147,7 +1151,8 @@ remove:
             n = make_ag_node(cypher_set);
             n->items = $2;
             n->is_remove = true;
-             n->location = @1;
+            n->perms = build_perms_info_for_update($2, "REMOVE");
+            n->location = @1;
 
             $$ = (Node *)n;
         }
@@ -1190,6 +1195,7 @@ delete:
             n = make_ag_node(cypher_delete);
             n->detach = $1;
             n->exprs = $3;
+            n->perms = build_perms_info_for_delete($3);
             n->location = @1;
 
             $$ = (Node *)n;
@@ -3361,4 +3367,82 @@ static Node *build_list_comprehension_node(ColumnRef *cref, Node *expr,
 
     /* return the UNWIND node */
     return (Node *)unwind;
+}
+
+static perms_info *build_perms_info_for_update(List *items, char *clause_name)
+{
+    List *varnames = NIL;
+    ColumnRef *cref = NULL;
+    ListCell *li;
+    perms_info *perms;
+    bool is_remove = strcmp(clause_name, "REMOVE") == 0;
+    
+    perms = palloc0(sizeof(perms_info));
+
+    foreach(li, items)
+    {
+        cypher_set_item *set_item = lfirst(li);
+        char *varname = NULL;
+
+        if (IsA(set_item->prop, ColumnRef))
+        {
+            cref = (ColumnRef *)set_item->prop;
+        }
+        else if (IsA(set_item->prop, A_Indirection))
+        {
+            A_Indirection *indir = (A_Indirection *)set_item->prop;
+            cref = (ColumnRef *)indir->arg;
+        }
+        else
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+                    is_remove ? errmsg("REMOVE clause must be in the format: REMOVE variable.property_name") :
+                                errmsg("SET clause expects a variable name")));
+        }
+
+        varname = strVal(linitial(cref->fields));
+        varnames = lappend(varnames, varname);
+    }
+
+    perms->varnames = varnames;
+    perms->permission |= ACL_UPDATE;
+    perms->permission |= ACL_SELECT;
+
+    return perms;
+}
+
+static perms_info *build_perms_info_for_delete(List *items)
+{
+    List *varnames = NIL;
+    ColumnRef *cref = NULL;
+    ListCell *li;
+    perms_info *perms;
+    
+    perms = palloc0(sizeof(perms_info));
+
+    foreach(li, items)
+    {
+        Node *expr = lfirst(li);
+        char *varname = NULL;
+
+        if (IsA(expr, ColumnRef))
+        {
+            cref = (ColumnRef *)expr;
+        }
+        else
+        {
+            ereport(ERROR,
+                    (errmsg_internal("unexpected Node for cypher_clause")));
+        }
+
+        varname = strVal(linitial(cref->fields));
+        varnames = lappend(varnames, varname);
+    }
+
+    perms->varnames = varnames;
+    perms->permission |= ACL_DELETE;
+    perms->permission |= ACL_SELECT;
+
+    return perms;
 }

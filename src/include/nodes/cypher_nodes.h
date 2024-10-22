@@ -90,11 +90,17 @@ typedef struct cypher_create
     List *pattern; /* a list of cypher_paths */
 } cypher_create;
 
+typedef struct perms_info {
+    List *varnames;
+    AclMode permission;
+} perms_info;
+
 typedef struct cypher_set
 {
     ExtensibleNode extensible;
     List *items; /* a list of cypher_set_items */
     bool is_remove; /* true if this is REMOVE clause */
+    perms_info *perms;
     int location;
 } cypher_set;
 
@@ -112,6 +118,7 @@ typedef struct cypher_delete
     ExtensibleNode extensible;
     bool detach; /* true if DETACH is specified */
     List *exprs; /* targets of this deletion */
+    perms_info *perms;
     int location;
 } cypher_delete;
 

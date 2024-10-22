@@ -47,5 +47,6 @@ ParseNamespaceItem *transform_cypher_clause_as_subquery(cypher_parsestate *cpsta
                                                         transform_method transform,
                                                         cypher_clause *clause,
                                                         Alias *alias,
-                                                        bool add_rte_to_query);
+                                                        bool add_rte_to_query,
+                                                        perms_info *perms);
 #endif

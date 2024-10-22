@@ -2462,7 +2462,7 @@ static Node *transform_cypher_list_comprehension(cypher_parsestate *cpstate,
 
     pnsi = transform_cypher_clause_as_subquery(cpstate,
                                                transform_cypher_clause,
-                                               &cc, NULL, true);
+                                               &cc, NULL, true, NULL);
 
     expr = transform_cypher_expr(cpstate, unwind->collect,
                                  EXPR_KIND_SELECT_TARGET);

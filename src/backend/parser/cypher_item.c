@@ -272,7 +272,7 @@ List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
 
             pnsi = transform_cypher_clause_as_subquery(cpstate,
                                                        transform_cypher_clause,
-                                                       &cc, NULL, true);
+                                                       &cc, NULL, true, NULL);
 
             target_list = list_concat(target_list,
                                       expandNSItemAttrs(&cpstate->pstate, pnsi,
