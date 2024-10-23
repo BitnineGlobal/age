@@ -127,4 +127,18 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
                                   TupleTableSlot *elemTupleSlot,
                                   EState *estate, CommandId cid);
 
+void setup_wcos(ResultRelInfo *resultRelInfo, EState *estate,
+                CustomScanState *node, CmdType cmd);
+void add_with_check_options(Relation rel,
+                            int rt_index,
+                            WCOKind kind,
+                            List *permissive_policies,
+                            List *restrictive_policies,
+                            List **withCheckOptions,
+                            bool *hasSubLinks,
+                            bool force_using);
+void get_policies_for_relation(Relation relation, CmdType cmd, Oid user_id,
+                               List **permissive_policies,
+                               List **restrictive_policies);
+
 #endif

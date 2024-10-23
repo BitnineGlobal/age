@@ -120,6 +120,11 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
                 cypher_node->prop_expr_state = ExecInitExpr(cypher_node->prop_expr,
                                                             (PlanState *)node);
             }
+
+            if (rel->rd_rel->relrowsecurity)
+            {
+                setup_wcos(cypher_node->resultRelInfo, estate, node, CMD_INSERT);
+            }
         }
     }
 

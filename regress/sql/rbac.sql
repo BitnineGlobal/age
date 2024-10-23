@@ -209,6 +209,77 @@ SELECT create_elabel('movies', 'DIRECTED');
 RESET ROLE;
 
 --
+-- Test ROW LEVEL SECURITY
+--
+
+CREATE ROLE group1;
+CREATE ROLE role2 IN ROLE group1;
+CREATE ROLE role3 IN ROLE group1;
+
+SELECT * FROM cypher('movies', $$MATCH (a:Actor) RETURN a$$) AS (a agtype);
+
+-- To allow group1 to use age, USAGE on ag_catalog is required
+GRANT USAGE ON SCHEMA ag_catalog TO group1;
+
+-- To allow group1 to access the movies graph, USAGE on movies is required
+GRANT USAGE ON SCHEMA movies TO group1;
+
+-- Allow group1 to use MATCH, CREATE/MERGE, SET/REMOVE on Actor label
+GRANT SELECT, INSERT, UPDATE, DELETE ON movies."Actor" TO group1;
+GRANT USAGE ON movies."Actor_id_seq" TO group1;
+
+ALTER TABLE movies."Actor" ENABLE ROW LEVEL SECURITY;
+
+SET role role2;
+
+-- Since we enabled rls without any policy, role2 should not be able to access/insert any data
+SELECT * FROM cypher('movies', $$MATCH (a:Actor) RETURN a$$) AS (a agtype);
+SELECT * FROM cypher('movies', $$CREATE (a:Actor {name: "New Actor"})$$) AS (a agtype);
+
+RESET ROLE;
+
+-- Add policy to allow role2 to access/insert data and role3 to access data
+CREATE POLICY actor_policy ON movies."Actor" TO group1
+USING (current_role = 'role2' OR current_role = 'role3')
+WITH CHECK (current_role = 'role2');
+
+SET role role2;
+
+SELECT * FROM cypher('movies', $$MATCH (a:Actor) RETURN a$$) AS (a agtype);
+SELECT * FROM cypher('movies', $$CREATE (a:Actor {name: "New Actor"})$$) AS (a agtype);
+SELECT * FROM cypher('movies', $$MATCH (a:Actor {name: "Tom Cruise"}) SET a.name = "Tom Hanks" RETURN a$$) AS (a agtype);
+SELECT * FROM cypher('movies', $$MERGE (a:Actor {name: "Tom Cruise"}) return a$$) AS (a agtype);
+
+RESET ROLE;
+
+SET role role3;
+
+SELECT * FROM cypher('movies', $$MATCH (a:Actor) RETURN a$$) AS (a agtype);
+-- Should pass because its same as MATCH, as no new row will be created
+SELECT * FROM cypher('movies', $$MERGE (a:Actor {name: "New Actor"})$$) AS (a agtype);
+-- Should fail as role3
+SELECT * FROM cypher('movies', $$CREATE (a:Actor {name: "New Actor"})$$) AS (a agtype);
+SELECT * FROM cypher('movies', $$MATCH (a:Actor {name: "New Actor"}) SET a.name = "Tom Hanks" RETURN a$$) AS (a agtype);
+SELECT * FROM cypher('movies', $$MERGE (a:Actor {name: "Bryan Cranston"}) return a$$) AS (a agtype);
+
+RESET ROLE;
+
+-- Allow role3 to access/update data where name is "Tom Cruise"
+ALTER POLICY actor_policy ON movies."Actor"
+USING (current_role = 'role2' OR (current_role = 'role3' AND properties->>'"name"' = 'Tom Cruise'))
+WITH CHECK (current_role = 'role2' OR (current_role = 'role3' AND properties->>'"name"' = 'Tom Cruise'));
+
+SET role role3;
+
+SELECT * FROM cypher('movies', $$MATCH (a:Actor {name: "Tom Cruise"}) SET a.age=40 RETURN a$$) AS (a agtype);
+SELECT * FROM cypher('movies', $$MATCH (a:Actor {name: "Tom Cruise"}) DELETE a RETURN a$$) AS (a agtype);
+-- Should fail as role3 can only update where name is "Tom Cruise"
+SELECT * FROM cypher('movies', $$MATCH (a:Actor {name: "New Actor"}) SET a.age=40 RETURN a$$) AS (a agtype);
+SELECT * FROM cypher('movies', $$MATCH (a:Actor {name: "New Actor"}) DELETE a RETURN a$$) AS (a agtype);
+
+RESET ROLE;
+
+--
 -- cleanup
 --
 SELECT drop_graph('movies', true);

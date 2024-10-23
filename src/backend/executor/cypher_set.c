@@ -125,6 +125,12 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
             ExecConstraints(resultRelInfo, elemTupleSlot, estate);
         }
 
+        if (resultRelInfo->ri_WithCheckOptions)
+        {
+            ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK, resultRelInfo,
+                                 elemTupleSlot, estate);
+        }
+
         result = table_tuple_update(resultRelInfo->ri_RelationDesc,
                                     &tuple->t_self, elemTupleSlot,
                                     cid, estate->es_snapshot,
@@ -504,6 +510,11 @@ static void process_update_list(CustomScanState *node)
         slot = ExecInitExtraTupleSlot(
             estate, RelationGetDescr(resultRelInfo->ri_RelationDesc),
             &TTSOpsHeapTuple);
+
+        if (resultRelInfo->ri_RelationDesc->rd_rel->relrowsecurity)
+        {
+            setup_wcos(resultRelInfo, estate, node, CMD_UPDATE);
+        }
 
         /*
          *  Now that we have the updated properties, create a either a vertex or
