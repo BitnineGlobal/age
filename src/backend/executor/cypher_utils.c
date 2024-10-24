@@ -43,8 +43,10 @@ ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
     Relation label_relation = NULL;
     ResultRelInfo *resultRelInfo = NULL;
     ParseState *pstate = NULL;
+    #if PG_VERSION_NUM >= 160000
     RangeTblEntry *rte = NULL;
-    int pii = 0;
+    #endif
+    int rri = 0;
 
     /* create a new parse state for this operation */
     pstate = make_parsestate(NULL);
@@ -62,6 +64,7 @@ ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
 
     label_relation = parserOpenTable(pstate, rv, RowExclusiveLock);
 
+    #if PG_VERSION_NUM >= 160000
     /*
      * Get the rte to determine the correct perminfoindex value. Some rtes
      * may have it set up, some created here (executor) may not.
@@ -82,10 +85,13 @@ ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
      *       unnecessary.
      */
     rte = exec_rt_fetch(list_length(estate->es_range_table), estate);
-    pii = (rte->perminfoindex == 0) ? 0 : list_length(estate->es_range_table);
+    rri = (rte->perminfoindex == 0) ? 0 : list_length(estate->es_range_table);
+    #else
+    rri = list_length(estate->es_range_table);
+    #endif
 
     /* initialize the resultRelInfo */
-    InitResultRelInfo(resultRelInfo, label_relation, pii, NULL,
+    InitResultRelInfo(resultRelInfo, label_relation, rri, NULL,
                       estate->es_instrument);
 
     /* open the indices */
@@ -262,8 +268,13 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
     /* Insert index entries for the tuple */
     if (resultRelInfo->ri_NumIndices > 0)
     {
+        #if PG_VERSION_NUM >= 160000
         ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate,
                               false, false, NULL, NIL, false);
+        #else
+        ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate,
+                              false, false, NULL, NIL);
+        #endif
     }
 
     return tuple;

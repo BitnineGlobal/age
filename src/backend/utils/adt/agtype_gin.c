@@ -27,7 +27,9 @@
  */
 
 #include "postgres.h"
+#if PG_VERSION_NUM >= 160000
 #include "varatt.h"
+#endif
 
 #include "access/gin.h"
 #include "access/hash.h"

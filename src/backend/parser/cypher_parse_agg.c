@@ -193,8 +193,13 @@ void parse_check_aggregates(ParseState *pstate, Query *qry)
         root->planner_cxt = CurrentMemoryContext;
         root->hasJoinRTEs = true;
 
+        #if PG_VERSION_NUM >= 160000
         groupClauses = (List *) flatten_join_alias_vars(root, qry,
                                                         (Node *) groupClauses);
+        #else
+        groupClauses = (List *) flatten_join_alias_vars((Query *) root,
+                                                        (Node *) groupClauses);
+        #endif
     }
 
     /*
@@ -238,7 +243,11 @@ void parse_check_aggregates(ParseState *pstate, Query *qry)
                             have_non_var_grouping);
     if (hasJoinRTEs)
     {
+        #if PG_VERSION_NUM >= 160000
         clause = flatten_join_alias_vars(root, qry, clause);
+        #else
+        clause = flatten_join_alias_vars((Query *) root, clause);
+        #endif
     }
     check_ungrouped_columns(clause, pstate, qry, groupClauses,
                             groupClauseCommonVars, have_non_var_grouping,
@@ -249,7 +258,11 @@ void parse_check_aggregates(ParseState *pstate, Query *qry)
                             have_non_var_grouping);
     if (hasJoinRTEs)
     {
+        #if PG_VERSION_NUM >= 160000
         clause = flatten_join_alias_vars(root, qry, clause);
+        #else
+        clause = flatten_join_alias_vars((Query *) root, clause);
+        #endif
     }
     check_ungrouped_columns(clause, pstate, qry, groupClauses,
                             groupClauseCommonVars, have_non_var_grouping,
@@ -570,9 +583,14 @@ static bool finalize_grouping_exprs_walker(Node *node,
 
                 if (context->root)
                 {
+                    #if PG_VERSION_NUM >= 160000
                     expr = flatten_join_alias_vars(context->root,
                                                    (Query *)context->root,
                                                    expr);
+                    #else
+                    expr = flatten_join_alias_vars((Query *)context->root,
+                                                   expr);
+                    #endif
                 }
 
                 /*

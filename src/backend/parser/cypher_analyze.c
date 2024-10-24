@@ -1282,7 +1282,9 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
     }
 
     query->rtable = pstate->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     query->rteperminfos = pstate->p_rteperminfos;
+    #endif
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
     assign_query_collations(pstate, query);

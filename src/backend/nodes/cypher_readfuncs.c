@@ -24,7 +24,9 @@
 #include "nodes/cypher_readfuncs.h"
 #include "nodes/cypher_nodes.h"
 
+#if PG_VERSION_NUM >= 160000
 static char *nullable_string(const char *token, int length);
+#endif
 /*
  * Copied From Postgres
  *
@@ -109,10 +111,17 @@ static char *nullable_string(const char *token, int length);
         local_node->fldname = strtobool(token)
 
 /* Read a character-string field */
+#if PG_VERSION_NUM >= 160000
 #define READ_STRING_FIELD(fldname) \
         token = pg_strtok(&length); \
         token = pg_strtok(&length); \
         local_node->fldname = nullable_string(token, length)
+#else
+#define READ_STRING_FIELD(fldname) \
+        token = pg_strtok(&length); \
+        token = pg_strtok(&length); \
+        local_node->fldname = non_nullable_string(token, length)
+#endif
 
 /* Read a parse location field (and throw away the value, per notes above) */
 #define READ_LOCATION_FIELD(fldname) \
@@ -163,6 +172,7 @@ static char *nullable_string(const char *token, int length);
 
 #define strtobool(x)  ((*(x) == 't') ? true : false)
 
+#if PG_VERSION_NUM >= 160000
 /* copied from PG16 function of the same name for consistency */
 static char *nullable_string(const char *token, int length)
 {
@@ -179,6 +189,13 @@ static char *nullable_string(const char *token, int length)
     /* otherwise, we must remove protective backslashes added by outToken */
     return debackslash(token, length);
 }
+#else
+#define nullable_string(token,length)  \
+        ((length) == 0 ? NULL : debackslash(token, length))
+
+#define non_nullable_string(token,length)  \
+        ((length) == 0 ? "" : debackslash(token, length))
+#endif
 
 /*
  * Default read function for cypher nodes. For most nodes, we don't expect

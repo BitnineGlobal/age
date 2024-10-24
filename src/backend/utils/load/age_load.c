@@ -20,7 +20,8 @@
 #include "postgres.h"
 #include "catalog/indexing.h"
 #include "executor/executor.h"
-#include "utils/json.h"
+#include "utils/jsonfuncs.h"
+#include "common/jsonapi.h"
 
 #include "utils/load/ag_load_edges.h"
 #include "utils/load/ag_load_labels.h"
@@ -31,6 +32,7 @@ static agtype_value *csv_value_to_agtype_value(char *csv_val);
 static Oid get_or_create_graph(const Name graph_name);
 static int32 get_or_create_label(Oid graph_oid, char *graph_name,
                                  char *label_name, char label_kind);
+static bool json_validate(text *json);
 
 agtype *create_empty_agtype(void)
 {
@@ -50,6 +52,22 @@ agtype *create_empty_agtype(void)
 }
 
 /*
+ * Validate JSON text.
+ *
+ * Note: this function is borrowed from PG16. It is simplified
+ * by removing two parameters as they are not used in age.
+ */
+static bool json_validate(text *json)
+{
+    JsonLexContext *lex = makeJsonLexContext(json, false);
+    JsonParseErrorType result;
+
+    result = pg_parse_json(lex, &nullSemAction);
+
+    return result == JSON_SUCCESS;
+}
+
+/*
  * Converts the given csv value to an agtype_value.
  *
  * If csv_val is not a valid json, it is wrapped by double-quotes to make it a
@@ -62,7 +80,7 @@ static agtype_value *csv_value_to_agtype_value(char *csv_val)
     char *new_csv_val;
     agtype_value *res;
 
-    if (!json_validate(cstring_to_text(csv_val), false, false))
+    if (!json_validate(cstring_to_text(csv_val)))
     {
         /* wrap the string with double-quote */
         int oldlen;
@@ -316,10 +334,17 @@ void insert_batch(batch_insert_state *batch_state)
     {
         for (i = 0; i < batch_state->num_tuples; i++)
         {
+            #if PG_VERSION_NUM >= 160000
             result = ExecInsertIndexTuples(batch_state->resultRelInfo,
                                            batch_state->slots[i],
                                            batch_state->estate, false,
                                            true, NULL, NIL, false);
+            #else
+            result = ExecInsertIndexTuples(batch_state->resultRelInfo,
+                                           batch_state->slots[i],
+                                           batch_state->estate, false,
+                                           true, NULL, NIL);
+            #endif
 
             /* Check if the unique constraint is violated */
             if (list_length(result) != 0)

@@ -29,10 +29,10 @@
  */
 
 #include "postgres.h"
+#if PG_VERSION_NUM >= 160000
 #include "varatt.h"
-#include "utils/jsonfuncs.h"
 #include <math.h>
-
+#endif
 #include <float.h>
 
 #include "access/genam.h"
@@ -46,9 +46,11 @@
 #include "parser/parse_coerce.h"
 #include "utils/builtins.h"
 #include "utils/float.h"
+#include "utils/jsonfuncs.h"
 #include "utils/lsyscache.h"
 #include "utils/snapmgr.h"
 #include "utils/typcache.h"
+
 #include "utils/age_vle.h"
 #include "utils/agtype_parser.h"
 #include "utils/ag_float8_supp.h"
@@ -1022,8 +1024,14 @@ static void agtype_in_scalar(void *pstate, char *token,
     case AGTYPE_TOKEN_FLOAT:
         Assert(token != NULL);
         v.type = AGTV_FLOAT;
+        #if PG_VERSION_NUM >= 160000
         v.val.float_value = float8in_internal(token, NULL, "double precision",
                                               token, NULL);
+        #else
+        v.val.float_value = float8in_internal(token, NULL, "double precision",
+                                              token);
+        #endif
+
         break;
     case AGTYPE_TOKEN_NUMERIC:
         Assert(token != NULL);
@@ -10888,7 +10896,9 @@ Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
 
     /* If there were no regular rows, the result is NULL */
     if (PG_ARGISNULL(0))
+    {
         PG_RETURN_NULL();
+    }
 
     /* retrieve the state and percentile */
     pgastate = (PercentileGroupAggState *) PG_GETARG_POINTER(0);
@@ -10896,7 +10906,9 @@ Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
 
     /* number_of_rows could be zero if we only saw NULL input values */
     if (pgastate->number_of_rows == 0)
+    {
         PG_RETURN_NULL();
+    }
 
     /* Finish the sort, or rescan if we already did */
     if (!pgastate->sort_done)
@@ -10905,7 +10917,9 @@ Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
         pgastate->sort_done = true;
     }
     else
+    {
         tuplesort_rescan(pgastate->sortstate);
+    }
 
     /* calculate the percentile cont*/
     first_row = floor(percentile * (pgastate->number_of_rows - 1));
@@ -10914,12 +10928,26 @@ Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
     Assert(first_row < pgastate->number_of_rows);
 
     if (!tuplesort_skiptuples(pgastate->sortstate, first_row, true))
+    {
         elog(ERROR, "missing row in percentile_cont");
+    }
 
+    #if PG_VERSION_NUM >= 160000
     if (!tuplesort_getdatum(pgastate->sortstate, true, false, &first_val, &isnull, NULL))
+    {
         elog(ERROR, "missing row in percentile_cont");
+    }
+    #else
+    if (!tuplesort_getdatum(pgastate->sortstate, true, &first_val, &isnull, NULL))
+    {
+        elog(ERROR, "missing row in percentile_cont");
+    }
+    #endif
+
     if (isnull)
+    {
         PG_RETURN_NULL();
+    }
 
     if (first_row == second_row)
     {
@@ -10927,11 +10955,22 @@ Datum age_percentile_cont_aggfinalfn(PG_FUNCTION_ARGS)
     }
     else
     {
+        #if PG_VERSION_NUM >= 160000
         if (!tuplesort_getdatum(pgastate->sortstate, true, false, &second_val, &isnull, NULL))
+        {
             elog(ERROR, "missing row in percentile_cont");
+        }
+        #else
+        if (!tuplesort_getdatum(pgastate->sortstate, true, &second_val, &isnull, NULL))
+        {
+            elog(ERROR, "missing row in percentile_cont");
+        }
+        #endif
 
         if (isnull)
+        {
             PG_RETURN_NULL();
+        }
 
         proportion = (percentile * (pgastate->number_of_rows - 1)) - first_row;
         val = float8_lerp(first_val, second_val, proportion);
@@ -10960,14 +10999,18 @@ Datum age_percentile_disc_aggfinalfn(PG_FUNCTION_ARGS)
 
     /* If there were no regular rows, the result is NULL */
     if (PG_ARGISNULL(0))
+    {
         PG_RETURN_NULL();
+    }
 
     pgastate = (PercentileGroupAggState *) PG_GETARG_POINTER(0);
     percentile = pgastate->percentile;
 
     /* number_of_rows could be zero if we only saw NULL input values */
     if (pgastate->number_of_rows == 0)
+    {
         PG_RETURN_NULL();
+    }
 
     /* Finish the sort, or rescan if we already did */
     if (!pgastate->sort_done)
@@ -10976,7 +11019,9 @@ Datum age_percentile_disc_aggfinalfn(PG_FUNCTION_ARGS)
         pgastate->sort_done = true;
     }
     else
+    {
         tuplesort_rescan(pgastate->sortstate);
+    }
 
     /*----------
      * We need the smallest K such that (K/N) >= percentile.
@@ -10990,15 +11035,28 @@ Datum age_percentile_disc_aggfinalfn(PG_FUNCTION_ARGS)
     if (rownum > 1)
     {
         if (!tuplesort_skiptuples(pgastate->sortstate, rownum - 1, true))
+        {
             elog(ERROR, "missing row in percentile_disc");
+        }
     }
 
+    #if PG_VERSION_NUM >= 160000
     if (!tuplesort_getdatum(pgastate->sortstate, true, false, &val, &isnull, NULL))
+    {
         elog(ERROR, "missing row in percentile_disc");
+    }
+    #else
+    if (!tuplesort_getdatum(pgastate->sortstate, true, &val, &isnull, NULL))
+    {
+        elog(ERROR, "missing row in percentile_disc");
+    }
+    #endif
 
     /* We shouldn't have stored any nulls, but do the right thing anyway */
     if (isnull)
+    {
         PG_RETURN_NULL();
+    }
 
     /* convert to an agtype float and return the result */
     agtv_float.type = AGTV_FLOAT;
