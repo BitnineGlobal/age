@@ -410,26 +410,35 @@ static List *expand_pnsi_attrs(ParseState *pstate, ParseNamespaceItem *pnsi,
 			       int sublevels_up, bool require_col_privs,
                                int location)
 {
-    RangeTblEntry *rte = pnsi->p_rte;
-    RTEPermissionInfo *perminfo = pnsi->p_perminfo;
     List *names, *vars;
     ListCell *name, *var;
     List *te_list = NIL;
     int var_prefix_len = strlen(AGE_DEFAULT_VARNAME_PREFIX);
     int alias_prefix_len = strlen(AGE_DEFAULT_ALIAS_PREFIX);
-
-    vars = expandNSItemVars(pstate, pnsi, sublevels_up, location, &names);
+    RangeTblEntry *rte = pnsi->p_rte;
 
     /*
      * Require read access to the table.  This is normally redundant with the
      * markVarForSelectPriv calls below, but not if the table has zero
      * columns.
      */
+    #if PG_VERSION_NUM >= 160000
     if (rte->rtekind == RTE_RELATION)
-     {
-         Assert(perminfo != NULL);
-         perminfo->requiredPerms |= ACL_SELECT;
-     }
+    {
+        RTEPermissionInfo *perminfo = pnsi->p_perminfo;
+        Assert(perminfo != NULL);
+        perminfo->requiredPerms |= ACL_SELECT;
+    }
+
+    vars = expandNSItemVars(pstate, pnsi, sublevels_up, location, &names);
+    #else
+    if (rte->rtekind == RTE_RELATION)
+    {
+        rte->requiredPerms |= ACL_SELECT;
+    }
+
+    vars = expandNSItemVars(pnsi, sublevels_up, location, &names);
+    #endif
 
     /* iterate through the variables */
     forboth(name, names, var, vars)

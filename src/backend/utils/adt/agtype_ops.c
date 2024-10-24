@@ -22,7 +22,9 @@
  */
 
 #include "postgres.h"
+#if PG_VERSION_NUM >= 160000
 #include "varatt.h"
+#endif
 #include <math.h>
 #include <limits.h>
 

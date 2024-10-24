@@ -316,7 +316,9 @@ static List *make_target_list_from_join(ParseState *pstate,
                                         RangeTblEntry *rte);
 static FuncExpr *make_clause_func_expr(char *function_name,
                                        Node *clause_information);
+#if PG_VERSION_NUM >= 160000
 static void markRelsAsNulledBy(ParseState *pstate, Node *n, int jindex);
+#endif
 
 /* for VLE support */
 static ParseNamespaceItem *transform_RangeFunction(cypher_parsestate *cpstate,
@@ -654,7 +656,9 @@ static Query *transform_cypher_union(cypher_parsestate *cpstate,
                                               EXPR_KIND_LIMIT, "LIMIT");
 
     qry->rtable = pstate->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     qry->rteperminfos = pstate->p_rteperminfos;
+    #endif
     qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     qry->hasAggs = pstate->p_hasAggs;
 
@@ -1259,7 +1263,9 @@ static Query *transform_cypher_call_subquery(cypher_parsestate *cpstate,
     markTargetListOrigins(pstate, query->targetList);
 
     query->rtable = cpstate->pstate.p_rtable;
+    #if PG_VERSION_NUM >= 160000
     query->rteperminfos = cpstate->pstate.p_rteperminfos;
+    #endif
     query->jointree = makeFromExpr(cpstate->pstate.p_joinlist, (Node *)where_qual);
     query->hasAggs = pstate->p_hasAggs;
 
@@ -1332,7 +1338,9 @@ static Query *transform_cypher_delete(cypher_parsestate *cpstate,
     query->targetList = lappend(query->targetList, tle);
 
     query->rtable = pstate->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     query->rteperminfos = pstate->p_rteperminfos;
+    #endif
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
     return query;
@@ -1407,7 +1415,9 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
 
     query->targetList = lappend(query->targetList, te);
     query->rtable = pstate->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     query->rteperminfos = pstate->p_rteperminfos;
+    #endif
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     query->hasTargetSRFs = pstate->p_hasTargetSRFs;
     query->hasAggs = pstate->p_hasAggs;
@@ -1551,7 +1561,9 @@ static Query *transform_cypher_set(cypher_parsestate *cpstate,
     query->targetList = lappend(query->targetList, tle);
 
     query->rtable = pstate->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     query->rteperminfos = pstate->p_rteperminfos;
+    #endif
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
     return query;
@@ -2160,7 +2172,9 @@ static Query *transform_cypher_return(cypher_parsestate *cpstate,
                                                EXPR_KIND_LIMIT, "LIMIT");
 
     query->rtable = pstate->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     query->rteperminfos = pstate->p_rteperminfos;
+    #endif
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     query->hasAggs = pstate->p_hasAggs;
 
@@ -2386,7 +2400,9 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
         markTargetListOrigins(pstate, query->targetList);
 
         query->rtable = pstate->p_rtable;
+        #if PG_VERSION_NUM >= 160000
         query->rteperminfos = pstate->p_rteperminfos;
+        #endif
 
         where_qual = transform_cypher_expr(cpstate, where, EXPR_KIND_WHERE);
 
@@ -2566,14 +2582,15 @@ static void get_res_cols(ParseState *pstate, ParseNamespaceItem *l_pnsi,
 
         if (var == NULL)
         {
-            Var *v;
+            Var *v = lfirst(r_lvar);
 
+            #if PG_VERSION_NUM >= 160000
             /*
              * Each join (left) RTE's Var, that references a column of the
              * right RTE, needs to be marked 'nullable'.
              */
-            v = lfirst(r_lvar);
             markNullableIfNeeded(pstate, v);
+            #endif
 
             colnames = lappend(colnames, lfirst(r_lname));
             colvars = lappend(colvars, v);
@@ -2625,12 +2642,14 @@ static RangeTblEntry *transform_cypher_optional_match_clause(cypher_parsestate *
     j->rarg = transform_clause_for_join(cpstate, clause, &r_rte,
                                         &r_nsitem, r_alias);
 
+    #if PG_VERSION_NUM >= 160000
     /*
      * Since this is a left join, we need to mark j->rarg as it may potentially
      * emit NULL. The jindex argument holds rtindex of the join's RTE, which is
      * created right after j->arg's RTE in this case.
      */
     markRelsAsNulledBy(pstate, j->rarg, r_nsitem->p_rtindex + 1);
+    #endif
 
     /* we are done transform the lateral left join */
     pstate->p_lateral_active = false;
@@ -2723,7 +2742,9 @@ static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
 
         query->targetList = make_target_list_from_join(pstate, rte);
         query->rtable = pstate->p_rtable;
+        #if PG_VERSION_NUM >= 160000
         query->rteperminfos = pstate->p_rteperminfos;
+        #endif
         query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     }
     else
@@ -2869,7 +2890,9 @@ static Query *transform_cypher_sub_pattern(cypher_parsestate *cpstate,
     markTargetListOrigins(p_child_parse_state, qry->targetList);
 
     qry->rtable = p_child_parse_state->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     qry->rteperminfos = p_child_parse_state->p_rteperminfos;
+    #endif
     qry->jointree = makeFromExpr(p_child_parse_state->p_joinlist, NULL);
 
     /* the state will be destroyed so copy the data we need */
@@ -2917,7 +2940,9 @@ static Query *transform_cypher_sub_query(cypher_parsestate *cpstate,
     markTargetListOrigins(p_child_parse_state, qry->targetList);
 
     qry->rtable = p_child_parse_state->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     qry->rteperminfos = p_child_parse_state->p_rteperminfos;
+    #endif
     qry->jointree = makeFromExpr(p_child_parse_state->p_joinlist, NULL);
 
     /* the state will be destroyed so copy the data we need */
@@ -3204,7 +3229,9 @@ static void transform_match_pattern(cypher_parsestate *cpstate, Query *query,
     }
 
     query->rtable = cpstate->pstate.p_rtable;
+    #if PG_VERSION_NUM >= 160000
     query->rteperminfos = cpstate->pstate.p_rteperminfos;
+    #endif
 
     if (cpstate->p_list_comp)
     {
@@ -5601,7 +5628,9 @@ static Query *transform_cypher_create(cypher_parsestate *cpstate,
     query->targetList = lappend(query->targetList, tle);
 
     query->rtable = pstate->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     query->rteperminfos = pstate->p_rteperminfos;
+    #endif
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     query->hasAggs = pstate->p_hasAggs;
 
@@ -5757,11 +5786,13 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
     Expr *props;
     Relation label_relation;
     RangeVar *rv;
-    RTEPermissionInfo *rte_pi;
+    ParseNamespaceItem *pnsi;
     TargetEntry *te;
     char *alias;
     AttrNumber resno;
-    ParseNamespaceItem *pnsi;
+    #if PG_VERSION_NUM >= 160000
+    RTEPermissionInfo *rte_pi;
+    #endif
 
     if (edge->label)
     {
@@ -5850,10 +5881,13 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
     rel->relid = RelationGetRelid(label_relation);
 
     pnsi = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
-                                        AccessShareLock, NULL, false, false);
-
+                                         AccessShareLock, NULL, false, false);
+    #if PG_VERSION_NUM >= 160000
     rte_pi = pnsi->p_perminfo;
     rte_pi->requiredPerms = ACL_INSERT;
+    #else
+    pnsi->p_rte->requiredPerms = ACL_INSERT;
+    #endif
 
     /* Build Id expression, always use the default logic */
     rel->id_expr = (Expr *)build_column_default(label_relation,
@@ -6079,12 +6113,14 @@ transform_create_cypher_new_node(cypher_parsestate *cpstate,
     cypher_target_node *rel = make_ag_node(cypher_target_node);
     Relation label_relation;
     RangeVar *rv;
-    RTEPermissionInfo *rte_pi;
+    ParseNamespaceItem *pnsi;
     TargetEntry *te;
     Expr *props;
     char *alias;
     int resno;
-    ParseNamespaceItem *pnsi;
+    #if PG_VERSION_NUM >= 160000
+    RTEPermissionInfo *rte_pi;
+    #endif
 
     rel->type = LABEL_KIND_VERTEX;
     rel->tuple_position = InvalidAttrNumber;
@@ -6129,9 +6165,12 @@ transform_create_cypher_new_node(cypher_parsestate *cpstate,
 
     pnsi = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
                                         AccessShareLock, NULL, false, false);
-
+    #if PG_VERSION_NUM >= 160000
     rte_pi = pnsi->p_perminfo;
     rte_pi->requiredPerms = ACL_INSERT;
+    #else
+    pnsi->p_rte->requiredPerms = ACL_INSERT;
+    #endif
 
     /* id */
     rel->id_expr = (Expr *)build_column_default(label_relation,
@@ -6299,10 +6338,13 @@ transform_cypher_clause_as_subquery(cypher_parsestate *cpstate,
 
             if (rt && (rt->rtekind == RTE_RELATION))
             {
-                RTEPermissionInfo *rte_pi;
-
-                rte_pi = getRTEPermissionInfo(query->rteperminfos, rt);
+                #if PG_VERSION_NUM >= 160000
+                RTEPermissionInfo *rte_pi =
+                                getRTEPermissionInfo(query->rteperminfos, rt);
                 rte_pi->requiredPerms = perms->permission;
+                #else
+                rt->requiredPerms = perms->permission;
+                #endif
             }
         }
     }
@@ -6630,7 +6672,9 @@ static Query *transform_cypher_merge(cypher_parsestate *cpstate,
     markTargetListOrigins(pstate, query->targetList);
 
     query->rtable = pstate->p_rtable;
+    #if PG_VERSION_NUM >= 160000
     query->rteperminfos = pstate->p_rteperminfos;
+    #endif
     query->jointree = makeFromExpr(pstate->p_joinlist, NULL);
     query->hasAggs = pstate->p_hasAggs;
 
@@ -6706,12 +6750,14 @@ transform_merge_make_lateral_join(cypher_parsestate *cpstate, Query *query,
     j->rarg = transform_clause_for_join(cpstate, isolated_merge_clause, &r_rte,
                                             &r_nsitem, r_alias);
 
+    #if PG_VERSION_NUM >= 160000
     /*
      * Since this is a left join, we need to mark j->rarg as it may potentially
      * emit NULL. The jindex argument holds rtindex of the join's RTE, which is
      * created right after j->arg's RTE in this case.
      */
     markRelsAsNulledBy(pstate, j->rarg, r_nsitem->p_rtindex + 1);
+    #endif
 
     /* deactivate the lateral flag */
     pstate->p_lateral_active = false;
@@ -7151,8 +7197,10 @@ transform_merge_cypher_edge(cypher_parsestate *cpstate, List **target_list,
     cypher_target_node *rel = make_ag_node(cypher_target_node);
     Relation label_relation;
     RangeVar *rv;
-    RTEPermissionInfo *rte_pi;
     ParseNamespaceItem *pnsi;
+    #if PG_VERSION_NUM >= 160000
+    RTEPermissionInfo *rte_pi;
+    #endif
 
     if (edge->name != NULL)
     {
@@ -7238,8 +7286,12 @@ transform_merge_cypher_edge(cypher_parsestate *cpstate, List **target_list,
 
     pnsi = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
                                          AccessShareLock, NULL, false, false);
+    #if PG_VERSION_NUM >= 160000
     rte_pi = pnsi->p_perminfo;
     rte_pi->requiredPerms = ACL_INSERT;
+    #else
+    pnsi->p_rte->requiredPerms = ACL_INSERT;
+    #endif
 
     /* Build Id expression, always use the default logic */
     rel->id_expr = (Expr *)build_column_default(label_relation,
@@ -7266,8 +7318,10 @@ transform_merge_cypher_node(cypher_parsestate *cpstate, List **target_list,
     cypher_target_node *rel = make_ag_node(cypher_target_node);
     Relation label_relation;
     RangeVar *rv;
-    RTEPermissionInfo *rte_pi;
     ParseNamespaceItem *pnsi;
+    #if PG_VERSION_NUM >= 160000
+    RTEPermissionInfo *rte_pi;
+    #endif
 
     if (node->name != NULL)
     {
@@ -7375,9 +7429,12 @@ transform_merge_cypher_node(cypher_parsestate *cpstate, List **target_list,
 
     pnsi = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
                                          AccessShareLock, NULL, false, false);
-
+    #if PG_VERSION_NUM >= 160000
     rte_pi = pnsi->p_perminfo;
     rte_pi->requiredPerms = ACL_INSERT;
+    #else
+    pnsi->p_rte->requiredPerms = ACL_INSERT;
+    #endif
 
     /* id */
     rel->id_expr = (Expr *)build_column_default(label_relation,
@@ -7452,6 +7509,7 @@ static FuncExpr *make_clause_func_expr(char *function_name,
     return func_expr;
 }
 
+#if PG_VERSION_NUM >= 160000
 /*
  * This function is borrowed from PG version 16.1.
  *
@@ -7495,6 +7553,7 @@ static void markRelsAsNulledBy(ParseState *pstate, Node *n, int jindex)
     lc = list_nth_cell(pstate->p_nullingrels, varno - 1);
     lfirst(lc) = bms_add_member((Bitmapset *) lfirst(lc), jindex);
 }
+#endif
 
 /*
  * Utility function that helps a clause add the information needed to

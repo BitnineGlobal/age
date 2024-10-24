@@ -53,8 +53,10 @@ ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
     Relation label_relation = NULL;
     ResultRelInfo *resultRelInfo = NULL;
     ParseState *pstate = NULL;
+    #if PG_VERSION_NUM >= 160000
     RangeTblEntry *rte = NULL;
-    int pii = 0;
+    #endif
+    int rri = 0;
 
     /* create a new parse state for this operation */
     pstate = make_parsestate(NULL);
@@ -72,6 +74,7 @@ ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
 
     label_relation = parserOpenTable(pstate, rv, RowExclusiveLock);
 
+    #if PG_VERSION_NUM >= 160000
     /*
      * Get the rte to determine the correct perminfoindex value. Some rtes
      * may have it set up, some created here (executor) may not.
@@ -92,10 +95,13 @@ ResultRelInfo *create_entity_result_rel_info(EState *estate, char *graph_name,
      *       unnecessary.
      */
     rte = exec_rt_fetch(list_length(estate->es_range_table), estate);
-    pii = (rte->perminfoindex == 0) ? 0 : list_length(estate->es_range_table);
+    rri = (rte->perminfoindex == 0) ? 0 : list_length(estate->es_range_table);
+    #else
+    rri = list_length(estate->es_range_table);
+    #endif
 
     /* initialize the resultRelInfo */
-    InitResultRelInfo(resultRelInfo, label_relation, pii, NULL,
+    InitResultRelInfo(resultRelInfo, label_relation, rri, NULL,
                       estate->es_instrument);
 
     /* open the indices */
@@ -278,8 +284,13 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
     /* Insert index entries for the tuple */
     if (resultRelInfo->ri_NumIndices > 0)
     {
+        #if PG_VERSION_NUM >= 160000
         ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate,
                               false, false, NULL, NIL, false);
+        #else
+        ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate,
+                              false, false, NULL, NIL);
+        #endif
     }
 
     return tuple;
@@ -320,11 +331,14 @@ void setup_wcos(ResultRelInfo *resultRelInfo, EState *estate,
     List *wcoExprs = NIL;
     ListCell *lc;
     Relation rel;
-    RTEPermissionInfo *perminfo;
     Oid user_id;
     int rt_index;
     WCOKind wco_kind;
     bool hasSubLinks = false;
+    RangeTblEntry *rte;
+    #if PG_VERSION_NUM >= 160000
+    RTEPermissionInfo *perminfo;
+    #endif
 
     if (cmd == CMD_INSERT)
     {
@@ -356,10 +370,14 @@ void setup_wcos(ResultRelInfo *resultRelInfo, EState *estate,
                            &hasSubLinks,
                            false);
 
-    perminfo = getRTEPermissionInfo(estate->es_rteperminfos,
-                                    exec_rt_fetch(rt_index, estate));
+    rte = exec_rt_fetch(rt_index, estate);
 
+    #if PG_VERSION_NUM >= 160000
+    perminfo = getRTEPermissionInfo(estate->es_rteperminfos, rte);
     if (perminfo->requiredPerms & ACL_SELECT)
+    #else
+    if (rte->requiredPerms & ACL_SELECT)
+    #endif
     {
         List *select_permissive_policies = NIL;
         List *select_restrictive_policies = NIL;

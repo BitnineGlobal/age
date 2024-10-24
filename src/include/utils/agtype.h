@@ -31,6 +31,10 @@
 #ifndef AG_AGTYPE_H
 #define AG_AGTYPE_H
 
+#if PG_VERSION_NUM < 160000
+#include "lib/stringinfo.h"
+#endif
+
 #include "utils/array.h"
 #include "utils/numeric.h"
 

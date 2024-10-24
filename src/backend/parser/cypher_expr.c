@@ -296,8 +296,12 @@ static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
             }
             else
             {
+                #if PG_VERSION_NUM >= 160000
                 float8 f = float8in_internal(n, NULL, "double precision", n,
                                              NULL);
+                #else
+                float8 f = float8in_internal(n, NULL, "double precision", n);
+                #endif
 
                 d = float_to_agtype(f);
             }
