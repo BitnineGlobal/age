@@ -1226,7 +1226,11 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
 
 
     addNSItemToQuery(pstate, pnsi, true, true, true);
+    #if PG_VERSION_NUM >= 150000
     query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
+    #else
+    query->targetList = expandNSItemAttrs(pstate, pnsi, 0, -1);
+    #endif
 
     markTargetListOrigins(pstate, query->targetList);
 

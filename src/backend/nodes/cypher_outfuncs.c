@@ -436,7 +436,7 @@ void out_cypher_delete_item(StringInfo str, const ExtensibleNode *node)
 {
     DEFINE_AG_NODE(cypher_delete_item);
 
-    WRITE_NODE_FIELD(entity_position);
+    WRITE_INT32_FIELD(entity_position);
     WRITE_STRING_FIELD(var_name);
 }
 

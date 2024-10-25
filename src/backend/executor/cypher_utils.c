@@ -596,6 +596,7 @@ get_policies_for_relation(Relation relation, CmdType cmd, Oid user_id,
                     if (policy->polcmd == ACL_DELETE_CHR)
                         cmd_matches = true;
                     break;
+                #if PG_VERSION_NUM >= 150000
                 case CMD_MERGE:
 
                     /*
@@ -604,6 +605,7 @@ get_policies_for_relation(Relation relation, CmdType cmd, Oid user_id,
                      * commands.
                      */
                     break;
+                #endif
                 default:
                     elog(ERROR, "unrecognized policy command type %d",
                             (int) cmd);

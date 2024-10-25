@@ -311,7 +311,7 @@ void read_cypher_delete_item(struct ExtensibleNode *node)
 {
     READ_LOCALS(cypher_delete_item);
 
-    READ_NODE_FIELD(entity_position);
+    READ_INT_FIELD(entity_position);
     READ_STRING_FIELD(var_name);
 }
 

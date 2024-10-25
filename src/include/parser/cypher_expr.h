@@ -29,5 +29,10 @@
 
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
                             ParseExprKind expr_kind);
+Node *make_int_const(int i, int location);
+Node *make_float_const(char *s, int location);
+Node *make_string_const(char *s, int location);
+Node *make_bool_const(bool b, int location);
+Node *make_null_const(int location);
 
 #endif

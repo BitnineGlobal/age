@@ -155,7 +155,7 @@ void copy_cypher_delete_item(ExtensibleNode *newnode, const ExtensibleNode *from
 {
     COPY_LOCALS(cypher_delete_item);
 
-    COPY_NODE_FIELD(entity_position);
+    COPY_SCALAR_FIELD(entity_position);
     COPY_STRING_FIELD(var_name);
 }
 

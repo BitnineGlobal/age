@@ -39,6 +39,7 @@
 #include "commands/label_commands.h"
 #include "utils/ag_cache.h"
 #include "utils/name_validation.h"
+#include "parser/cypher_expr.h"
 
 /*
  * Relation name doesn't have to be label name but the same name is used so
@@ -464,7 +465,9 @@ static void create_index_on_column(char *schema_name,
     index_stmt->idxcomment = NULL;
     index_stmt->indexOid = InvalidOid;
     index_stmt->unique = unique;
+    #if PG_VERSION_NUM >= 150000
     index_stmt->nulls_not_distinct = false;
+    #endif
     index_stmt->primary = unique;
     index_stmt->isconstraint = unique;
     index_stmt->deferrable = false;
@@ -605,57 +608,45 @@ static Constraint *build_pk_constraint(void)
 static FuncCall *build_id_default_func_expr(char *graph_name, char *label_name,
                                             char *schema_name, char *seq_name)
 {
-    List *label_id_func_name;
-    A_Const *graph_name_const;
-    A_Const *label_name_const;
-    List *label_id_func_args;
+    List *label_id_fname;
+    List *label_id_fargs;
     FuncCall *label_id_func;
-    List *nextval_func_name;
+    List *nextval_fname;
     char *qualified_seq_name;
-    A_Const *qualified_seq_name_const;
     TypeCast *regclass_cast;
-    List *nextval_func_args;
+    List *nextval_fargs;
     FuncCall *nextval_func;
-    List *graphid_func_name;
-    List *graphid_func_args;
+    List *graphid_fname;
+    List *graphid_fargs;
     FuncCall *graphid_func;
 
     /* Build a node that gets the label id */
-    label_id_func_name = list_make2(makeString("ag_catalog"),
-                                    makeString("_label_id"));
-    graph_name_const = makeNode(A_Const);
-    graph_name_const->val.sval.type = T_String;
-    graph_name_const->val.sval.sval = graph_name;
-    graph_name_const->location = -1;
-    label_name_const = makeNode(A_Const);
-    label_name_const->val.sval.type = T_String;
-    label_name_const->val.sval.sval = label_name;
-    label_name_const->location = -1;
-    label_id_func_args = list_make2(graph_name_const, label_name_const);
-    label_id_func = makeFuncCall(label_id_func_name, label_id_func_args, COERCE_SQL_SYNTAX, -1);
+    label_id_fname = list_make2(makeString("ag_catalog"),
+                                makeString("_label_id"));
+    label_id_fargs = list_make2(make_string_const(graph_name, -1),
+                                make_string_const(label_name, -1));
+    label_id_func = makeFuncCall(label_id_fname, label_id_fargs, COERCE_SQL_SYNTAX, -1);
 
     /* Build a node that will get the next val from the label's sequence */
-    nextval_func_name = SystemFuncName("nextval");
+    nextval_fname = SystemFuncName("nextval");
     qualified_seq_name = quote_qualified_identifier(schema_name, seq_name);
-    qualified_seq_name_const = makeNode(A_Const);
-    qualified_seq_name_const->val.sval.type = T_String;
-    qualified_seq_name_const->val.sval.sval = qualified_seq_name;
-    qualified_seq_name_const->location = -1;
+
     regclass_cast = makeNode(TypeCast);
     regclass_cast->typeName = SystemTypeName("regclass");
-    regclass_cast->arg = (Node *)qualified_seq_name_const;
+    regclass_cast->arg = make_string_const(qualified_seq_name, -1);
     regclass_cast->location = -1;
-    nextval_func_args = list_make1(regclass_cast);
-    nextval_func = makeFuncCall(nextval_func_name, nextval_func_args, COERCE_SQL_SYNTAX, -1);
+
+    nextval_fargs = list_make1(regclass_cast);
+    nextval_func = makeFuncCall(nextval_fname, nextval_fargs, COERCE_SQL_SYNTAX, -1);
 
     /*
      * Build a node that constructs the graphid from the label id function
      * and the next val function for the given sequence.
      */
-    graphid_func_name = list_make2(makeString("ag_catalog"),
-                                   makeString("_graphid"));
-    graphid_func_args = list_make2(label_id_func, nextval_func);
-    graphid_func = makeFuncCall(graphid_func_name, graphid_func_args, COERCE_SQL_SYNTAX, -1);
+    graphid_fname = list_make2(makeString("ag_catalog"),
+                               makeString("_graphid"));
+    graphid_fargs = list_make2(label_id_func, nextval_func);
+    graphid_func = makeFuncCall(graphid_fname, graphid_fargs, COERCE_SQL_SYNTAX, -1);
 
     return graphid_func;
 }

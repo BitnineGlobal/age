@@ -380,20 +380,15 @@ static void process_delete_list(CustomScanState *node)
         ResultRelInfo *resultRelInfo;
         HeapTuple heap_tuple;
         char *label_name;
-        Integer *pos;
-        int entity_position;
 
         item = lfirst(lc);
 
-        pos = item->entity_position;
-        entity_position = pos->ival;
-
         /* skip if the entity is null */
-        if (scanTupleSlot->tts_isnull[entity_position - 1])
+        if (scanTupleSlot->tts_isnull[item->entity_position - 1])
             continue;
 
         original_entity_value = extract_entity(node, scanTupleSlot,
-                                               entity_position);
+                                               item->entity_position);
 
         id = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "id");
         label = GET_AGTYPE_VALUE_OBJECT_VALUE(original_entity_value, "label");

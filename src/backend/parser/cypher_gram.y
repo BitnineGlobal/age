@@ -27,6 +27,7 @@
 #include "parser/cypher_parse_node.h"
 #include "parser/scansup.h"
 #include "utils/agtype.h"
+#include "parser/cypher_expr.h"
 
 /* override the default action for locations */
 #define YYLLOC_DEFAULT(current, rhs, n) \
@@ -221,17 +222,10 @@ static Node *make_cypher_comparison_boolexpr(BoolExprType boolop, List *args,
 
 /* arithmetic operators */
 static Node *do_negate(Node *n, int location);
-static void do_negate_float(Float *v);
+static void do_negate_float(Node *v);
 
 /* indirection */
 static Node *append_indirection(Node *expr, Node *selector);
-
-/* literals */
-static Node *make_int_const(int i, int location);
-static Node *make_float_const(char *s, int location);
-static Node *make_string_const(char *s, int location);
-static Node *make_bool_const(bool b, int location);
-static Node *make_null_const(int location);
 
 /* typecast */
 static Node *make_typecast_expr(Node *expr, char *typecast, int location);
@@ -406,7 +400,7 @@ call_stmt:
             FuncCall *fc = (FuncCall*)$4;
             ColumnRef *cr = (ColumnRef*)$2;
             List *fields = cr->fields;
-            String *string = linitial(fields);
+            Node *string = linitial(fields);
 
             /*
              * A function can only be qualified with a single schema. So, we
@@ -444,7 +438,7 @@ call_stmt:
             FuncCall *fc = (FuncCall*)$4;
             ColumnRef *cr = (ColumnRef*)$2;
             List *fields = cr->fields;
-            String *string = linitial(fields);
+            Node *string = linitial(fields);
 
             /*
              * A function can only be qualified with a single schema. So, we
@@ -735,10 +729,12 @@ cypher_varlen_opt:
                 A_Const    *lidx = (A_Const *) n->lidx;
                 A_Const    *uidx = (A_Const *) n->uidx;
 
-                if (lidx->val.ival.ival > uidx->val.ival.ival)
+                if (intVal(&lidx->val) > intVal(&uidx->val))
+                {
                     ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
                                     errmsg("invalid range"),
                                     ag_scanner_errposition(@2, scanner)));
+                }
             }
             $$ = (Node *) n;
         }
@@ -1750,9 +1746,9 @@ expr:
             {
                 ColumnRef *cr = (ColumnRef*)$3;
                 List *fields = cr->fields;
-                String *string = linitial(fields);
+                Node *string = linitial(fields);
 
-                $$ = append_indirection($1, (Node*)string);
+                $$ = append_indirection($1, string);
             }
             /*
              * This checks for the grammar rule -
@@ -1765,7 +1761,7 @@ expr:
                 FuncCall *fc = (FuncCall*)$3;
                 ColumnRef *cr = (ColumnRef*)$1;
                 List *fields = cr->fields;
-                String *string = linitial(fields);
+                Node *string = linitial(fields);
 
                 /*
                  * A function can only be qualified with a single schema. So, we
@@ -1789,9 +1785,9 @@ expr:
             {
                 ColumnRef *cr = (ColumnRef*)$3;
                 List *fields = cr->fields;
-                String *string = linitial(fields);
+                Node *string = linitial(fields);
 
-                $$ = append_indirection($1, (Node*)string);
+                $$ = append_indirection($1, string);
             }
             else if (IsA($1, FuncCall) && IsA($3, A_Indirection))
             {
@@ -2561,17 +2557,15 @@ static Node *do_negate(Node *n, int location)
     {
         A_Const *c = (A_Const *)n;
 
-        /* report the constant's location as that of the '-' sign */
-        c->location = location;
-
-        if (c->val.ival.type == T_Integer)
+        if (IsA(&c->val, Integer))
         {
-            c->val.ival.ival = -c->val.ival.ival;
+            n = make_int_const(-intVal(&c->val), location);
             return n;
         }
-        else if (c->val.fval.type == T_Float)
+        else if (IsA(&c->val, Float))
         {
-            do_negate_float(&c->val.fval);
+            do_negate_float((Node *) &c->val);
+            c->location = location;
             return n;
         }
     }
@@ -2579,14 +2573,17 @@ static Node *do_negate(Node *n, int location)
     return (Node *)makeSimpleA_Expr(AEXPR_OP, "-", NULL, n, location);
 }
 
-static void do_negate_float(Float *v)
+
+#if PG_VERSION_NUM >= 150000
+static void do_negate_float(Node *v)
 {
+    Float *f = (Float *)v;
     char *oldval = NULL;
 
-    Assert(v != NULL);
-    Assert(IsA(v, Float));
+    Assert(f != NULL);
+    Assert(IsA(f, Float));
 
-    oldval = v->fval;
+    oldval = f->fval;
 
     if (*oldval == '+')
     {
@@ -2594,13 +2591,31 @@ static void do_negate_float(Float *v)
     }
     if (*oldval == '-')
     {
-        v->fval = oldval+1;    /* just strip the '-' */
+        f->fval = oldval+1;    /* just strip the '-' */
     }
     else
     {
-        v->fval = psprintf("-%s", oldval);
+        f->fval = psprintf("-%s", oldval);
     }
 }
+#else
+static void do_negate_float(Node *v)
+{
+    Value *f = (Value *)v;
+
+    Assert(f != NULL);
+    Assert(IsA(f, Float));
+
+    if (f->val.str[0] == '-')
+    {
+        f->val.str = f->val.str + 1; // just strip the '-'
+    }
+    else
+    {
+        f->val.str = psprintf("-%s", f->val.str);
+    }
+}
+#endif
 
 /*
  * indirection
@@ -2625,64 +2640,6 @@ static Node *append_indirection(Node *expr, Node *selector)
 
         return (Node *)indir;
     }
-}
-
-/*
- * literals
- */
-
-static Node *make_int_const(int i, int location)
-{
-    A_Const *n = makeNode(A_Const);
-
-    n->val.ival.type = T_Integer;
-    n->val.ival.ival = i;
-    n->location = location;
-
-    return (Node *) n;
-}
-
-static Node *make_float_const(char *s, int location)
-{
-    A_Const *n = makeNode(A_Const);
-
-    n->val.fval.type = T_Float;
-    n->val.fval.fval = s;
-    n->location = location;
-
-    return (Node *) n;
-}
-
-static Node *make_string_const(char *s, int location)
-{
-    A_Const *n = makeNode(A_Const);
-
-    n->val.sval.type = T_String;
-    n->val.sval.sval = s;
-    n->location = location;
-
-    return (Node *) n;
-}
-
-static Node *make_bool_const(bool b, int location)
-{
-    A_Const *n = makeNode(A_Const);
-
-    n->val.boolval.type = T_Boolean;
-    n->val.boolval.boolval = b;
-    n->location = location;
-
-    return (Node *) n;
-}
-
-static Node *make_null_const(int location)
-{
-    A_Const *n = makeNode(A_Const);
-
-    n->isnull = true;
-    n->location = location;
-
-    return (Node *) n;
 }
 
 /*
@@ -2714,7 +2671,7 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
         char *name;
 
         /* get the name of the function */
-        name = ((String*)linitial(func_name))->sval;
+        name = strVal(linitial(func_name));
 
         /*
          * Check for openCypher functions that are directly mapped to PG
@@ -2769,7 +2726,7 @@ static Node *make_star_function_expr(List *func_name, List *exprs, int location)
         char *name;
 
         /* get the name of the function */
-        name = ((String*)linitial(func_name))->sval;
+        name = strVal(linitial(func_name));
 
         /*
          * Check for openCypher functions that are directly mapped to PG
@@ -2826,7 +2783,7 @@ static Node *make_distinct_function_expr(List *func_name, List *exprs, int locat
         char *name;
 
         /* get the name of the function */
-        name = ((String*)linitial(func_name))->sval;
+        name = strVal(linitial(func_name));
 
         /*
          * Check for openCypher functions that are directly mapped to PG
@@ -2987,7 +2944,7 @@ static Node *make_subquery_returnless_set_op(SetOperation op, bool all_or_distin
 /* check if A_Expr is a comparison expression */
 static bool is_A_Expr_a_comparison_operation(cypher_comparison_aexpr *a)
 {
-    String *v = NULL;
+    Node *v = NULL;
     char *opr_name = NULL;
 
     /* we don't support qualified comparison operators */
@@ -3000,10 +2957,10 @@ static bool is_A_Expr_a_comparison_operation(cypher_comparison_aexpr *a)
 
     /* get the value and verify that it is a string */
     v = linitial(a->name);
-    Assert(v->type == T_String);
+    Assert(IsA(v, String));
 
     /* get the string value */
-    opr_name = v->sval;
+    opr_name = strVal(v);
 
     /* verify it is a comparison operation */
     if (strcmp(opr_name, "<") == 0)
@@ -3325,7 +3282,7 @@ static Node *build_list_comprehension_node(ColumnRef *cref, Node *expr,
     ResTarget *res = NULL;
     cypher_unwind *unwind = NULL;
     char *var_name = NULL;
-    String *val;
+    Node *val;
 
     /* Extract name from cref */
     val = linitial(cref->fields);
@@ -3336,7 +3293,7 @@ static Node *build_list_comprehension_node(ColumnRef *cref, Node *expr,
                 (errmsg_internal("unexpected Node for cypher_clause")));
     }
 
-    var_name = val->sval;
+    var_name = strVal(val);
 
     /*
      * Build the ResTarget node for the UNWIND variable var_name attached to

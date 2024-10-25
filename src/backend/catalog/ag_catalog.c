@@ -145,8 +145,7 @@ static bool is_age_drop(PlannedStmt *pstmt)
 
         if (IsA(obj, String))
         {
-            String *val = (String *)obj;
-            char *str = val->sval;
+            char *str = strVal(obj);
 
             if (!pg_strcasecmp(str, "age"))
                 return true;

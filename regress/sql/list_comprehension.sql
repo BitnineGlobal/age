@@ -48,7 +48,7 @@ SELECT * FROM cypher('list_comprehension', $$ MATCH () RETURN [i IN range(0, 20,
 SELECT * FROM cypher('list_comprehension', $$ MATCH (u) RETURN [i IN range(0, 20, 2) WHERE i % 3 = 0 | i^2 ] $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ MATCH p=() RETURN [i IN range(0, 20, 2) WHERE i % 3 = 0 | i^2 ] $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ MATCH p=(u) RETURN [i IN range(0, 20, 2) WHERE i % 3 = 0 | i^2 ] $$) AS (result agtype);
-SELECT * FROM cypher('list_comprehension', $$ MATCH (u) RETURN [i IN u.list] $$) AS (result agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH (u) RETURN [i IN u.list] ORDER BY u.list $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ MATCH (u) RETURN [i IN u.list WHERE i % 3 = 0] $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ MATCH (u) RETURN [i IN u.list WHERE i % 3 = 0 | i/3] $$) AS (result agtype);
 SELECT * FROM cypher('list_comprehension', $$ MATCH (u) RETURN [i IN u.list WHERE i % 3 = 0 | i/3][1] $$) AS (result agtype);
@@ -90,9 +90,9 @@ SELECT * FROM cypher('list_comprehension', $$ WITH [u IN [1,2,3]] AS a CREATE (u
 
 -- List comprehension in the WITH WHERE clause
 SELECT * FROM cypher('list_comprehension', $$ MATCH(u) WITH u WHERE u.list = [u IN [0, 2, 4, 6, 8, 10, 12]] RETURN u $$) AS (u agtype);
-SELECT * FROM cypher('list_comprehension', $$ MATCH(u) WITH u WHERE u.list = [u IN [0, 2, 4, 6, 8, 10, 12]] OR size(u.list) = 0 RETURN u $$) AS (u agtype);
-SELECT * FROM cypher('list_comprehension', $$ MATCH(u) WITH u WHERE u.list = [u IN [0, 2, 4, 6, 8, 10, 12]] OR size(u.list)::bool RETURN u $$) AS (u agtype);
-SELECT * FROM cypher('list_comprehension', $$ MATCH(u) WITH u WHERE u.list = [u IN [0, 2, 4, 6, 8, 10, 12]] OR NOT size(u.list)::bool RETURN u $$) AS (u agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH(u) WITH u WHERE u.list = [u IN [0, 2, 4, 6, 8, 10, 12]] OR size(u.list) = 0 RETURN u ORDER BY u.list $$) AS (u agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH(u) WITH u WHERE u.list = [u IN [0, 2, 4, 6, 8, 10, 12]] OR size(u.list)::bool RETURN u ORDER BY u.list $$) AS (u agtype);
+SELECT * FROM cypher('list_comprehension', $$ MATCH(u) WITH u WHERE u.list = [u IN [0, 2, 4, 6, 8, 10, 12]] OR NOT size(u.list)::bool RETURN u ORDER BY u.list$$) AS (u agtype);
 
 SELECT * FROM cypher('list_comprehension', $$ CREATE(u:csm_match {list: ['abc', 'def', 'ghi']}) $$) AS (u agtype);
 SELECT * FROM cypher('list_comprehension', $$ MATCH(u: csm_match) WITH u WHERE [u IN u.list][0] STARTS WITH "ab" RETURN u $$) AS (u agtype);

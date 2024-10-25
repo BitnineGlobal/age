@@ -41,6 +41,9 @@
 #include "utils/catcache.h"
 #include "utils/float.h"
 #include "utils/lsyscache.h"
+#if PG_VERSION_NUM < 150000
+#include "utils/int8.h"
+#endif
 
 #include "parser/cypher_expr.h"
 #include "parser/cypher_transform_entity.h"
@@ -283,14 +286,22 @@ static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
         break;
     case T_Float:
         {
-	    char *n = ac->val.sval.sval;
-            char *endptr;
             int64 i;
+            bool is_int;
+            #if PG_VERSION_NUM >= 150000
+            char *endptr;
+            char *n = ac->val.fval.fval;
             errno = 0;
 
             i = strtoi64(ac->val.fval.fval, &endptr, 10);
+            is_int = (errno == 0 && *endptr == '\0');
+            #else
+            char *n = ac->val.val.str;
 
-            if (errno == 0 && *endptr == '\0')
+            is_int = scanint8(n, true, &i);
+            #endif
+
+            if (is_int)
             {
                 d = integer_to_agtype(i);
             }
@@ -310,20 +321,30 @@ static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
     case T_String:
         d = string_to_agtype(strVal(&ac->val));
         break;
+
+    #if PG_VERSION_NUM >= 150000
     case T_Boolean:
         d = boolean_to_agtype(boolVal(&ac->val));
         break;
+    #else
+    case T_Null:
+        is_null = true;
+        break;
+    #endif
+
     default:
+        #if PG_VERSION_NUM >= 150000
         if (ac->isnull)
         {
-	    is_null = true;
-	}
+	        is_null = true;
+	    }
         else
+        #endif
         {
-	    ereport(ERROR, (errmsg_internal("unrecognized node type: %d",
+	        ereport(ERROR, (errmsg_internal("unrecognized node type: %d",
                                             nodeTag(&ac->val))));
-	    return NULL;
-	}
+	        return NULL;
+	    }
     }
     cancel_parser_errposition_callback(&pcbstate);
 
@@ -1433,10 +1454,8 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
             /* add slice bounds to args */
             if (!indices->lidx)
             {
-                A_Const *n = makeNode(A_Const);
-                n->isnull = true;
-                n->location = -1;
-                node = transform_cypher_expr_recurse(cpstate, (Node *)n);
+                node = transform_cypher_expr_recurse(cpstate,
+                                                     make_null_const(-1));
             }
             else
             {
@@ -1447,10 +1466,8 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
 
             if (!indices->uidx)
             {
-                A_Const *n = makeNode(A_Const);
-                n->isnull = true;
-                n->location = -1;
-                node = transform_cypher_expr_recurse(cpstate, (Node *)n);
+                node = transform_cypher_expr_recurse(cpstate,
+                                                     make_null_const(-1));
             }
             else
             {
@@ -1853,7 +1870,7 @@ static Form_pg_proc get_procform(FuncCall *fn, bool err_not_found)
     int i = 0;
     List *asp;
     bool found = false;
-    char *funcname = (((String*)linitial(fn->funcname))->sval);
+    char *funcname = strVal(linitial(fn->funcname));
 
     /* get a list of matching functions */
     catlist = SearchSysCacheList1(PROCNAMEARGSNSP, CStringGetDatum(funcname));
@@ -2287,11 +2304,7 @@ static Node *transform_CaseExpr(cypher_parsestate *cpstate, CaseExpr
     defresult = (Node *) cexpr->defresult;
     if (defresult == NULL)
     {
-        A_Const    *n = makeNode(A_Const);
-
-        n->isnull = true;
-        n->location = -1;
-        defresult = (Node *) n;
+        defresult = make_null_const(-1);
     }
     newcexpr->defresult = (Expr *) transform_cypher_expr_recurse(cpstate, defresult);
 
@@ -2475,4 +2488,70 @@ static Node *transform_cypher_list_comprehension(cypher_parsestate *cpstate,
     pstate->p_lateral_active = false;
 
     return expr;
+}
+
+Node *make_int_const(int i, int location)
+{
+    A_Const *n = makeNode(A_Const);
+
+    #if PG_VERSION_NUM >= 150000
+    n->val.ival = *makeInteger(i);
+    #else
+    n->val = *makeInteger(i);
+    #endif
+    n->location = location;
+
+    return (Node *) n;
+}
+
+Node *make_float_const(char *s, int location)
+{
+    A_Const *n = makeNode(A_Const);
+
+    #if PG_VERSION_NUM >= 150000
+    n->val.fval = *makeFloat(s);
+    #else
+    n->val = *makeFloat(s);
+    #endif
+    n->location = location;
+
+    return (Node *) n;
+}
+
+Node *make_string_const(char *s, int location)
+{
+    A_Const *n = makeNode(A_Const);
+
+    #if PG_VERSION_NUM >= 150000
+    n->val.sval = *makeString(s);
+    #else
+    n->val = *makeString(s);
+    #endif
+    n->location = location;
+
+    return (Node *) n;
+}
+
+Node *make_bool_const(bool b, int location)
+{
+    cypher_bool_const *n = make_ag_node(cypher_bool_const);
+
+    n->boolean = b;
+    n->location = location;
+
+    return (Node *) n;
+}
+
+Node *make_null_const(int location)
+{
+    A_Const *n = makeNode(A_Const);
+
+    #if PG_VERSION_NUM >= 150000
+    n->isnull = true;
+    #else
+    n->val.type = T_Null;
+    #endif
+    n->location = location;
+
+    return (Node *) n;
 }

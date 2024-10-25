@@ -1443,8 +1443,7 @@ static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
     {
         Node *expr = lfirst(lc);
         ColumnRef *col;
-        String *val;
-        Integer *pos;
+        Node *val;
         int resno;
 
         cypher_delete_item *item = make_ag_node(cypher_delete_item);
@@ -1471,22 +1470,20 @@ static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
                     (errmsg_internal("unexpected Node for cypher_clause")));
         }
 
-        resno = get_target_entry_resno(query->targetList, val->sval);
+        resno = get_target_entry_resno(query->targetList, strVal(val));
         if (resno == -1)
         {
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
                      errmsg("undefined reference to variable %s in DELETE clause",
-                            val->sval),
+                            strVal(val)),
                      parser_errposition(pstate, col->location)));
         }
 
         add_volatile_wrapper_to_target_entry(query->targetList, resno);
 
-        pos = makeInteger(resno);
-
-        item->var_name = val->sval;
-        item->entity_position = pos;
+        item->var_name = strVal(val);
+        item->entity_position = resno;
 
         items = lappend(items, item);
     }
@@ -1586,7 +1583,7 @@ cypher_update_information *transform_cypher_remove_item_list(
         ColumnRef *ref;
         A_Indirection *ind;
         char *variable_name, *property_name;
-        String *property_node, *variable_node;
+        Node *property_node, *variable_node;
 
         item = make_ag_node(cypher_update_item);
 
@@ -1632,7 +1629,7 @@ cypher_update_information *transform_cypher_remove_item_list(
 
         variable_node = linitial(ref->fields);
 
-        variable_name = variable_node->sval;
+        variable_name = strVal(variable_node);
         item->var_name = variable_name;
 
         item->entity_position = get_target_entry_resno(query->targetList,
@@ -1667,7 +1664,7 @@ cypher_update_information *transform_cypher_remove_item_list(
                      errmsg("REMOVE clause expects a property name"),
                      parser_errposition(pstate, set_item->location)));
         }
-        property_name = property_node->sval;
+        property_name = strVal(property_node);
         item->prop_name = property_name;
 
         info->set_items = lappend(info->set_items, item);
@@ -1695,7 +1692,7 @@ cypher_update_information *transform_cypher_set_item_list(
         ColumnRef *ref;
         A_Indirection *ind;
         char *variable_name, *property_name;
-        String *property_node, *variable_node;
+        Node *property_node, *variable_node;
         int is_entire_prop_update = 0; /* true if a map is assigned to variable */
 
         /* LHS of set_item must be a variable or an indirection. */
@@ -1795,7 +1792,7 @@ cypher_update_information *transform_cypher_set_item_list(
                          parser_errposition(pstate, set_item->location)));
             }
 
-            property_name = property_node->sval;
+            property_name = strVal(property_node);
             item->prop_name = property_name;
         }
 
@@ -1809,7 +1806,7 @@ cypher_update_information *transform_cypher_set_item_list(
                      parser_errposition(pstate, set_item->location)));
         }
 
-        variable_name = variable_node->sval;
+        variable_name = strVal(variable_node);
         item->var_name = variable_name;
 
         item->entity_position = get_target_entry_resno(query->targetList,
@@ -2395,7 +2392,11 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
          * all the variables that are introduced in the previous clause to the
          * next clause
          */
+        #if PG_VERSION_NUM >= 150000
         query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
+        #else
+        query->targetList = expandNSItemAttrs(pstate, pnsi, 0, -1);
+        #endif
 
         markTargetListOrigins(pstate, query->targetList);
 
@@ -3273,13 +3274,10 @@ static FuncCall *prevent_duplicate_edges(cypher_parsestate *cpstate,
 {
     List *edges = NIL;
     ListCell *lc;
-    List *qualified_function_name;
-    String *ag_catalog, *edge_fn;
+    List *qualified_fname;
 
-    ag_catalog = makeString("ag_catalog");
-    edge_fn = makeString("_ag_enforce_edge_uniqueness");
-
-    qualified_function_name = list_make2(ag_catalog, edge_fn);
+    qualified_fname = list_make2(makeString("ag_catalog"),
+                                 makeString("_ag_enforce_edge_uniqueness"));
 
     /* iterate through each entity, collecting the access node for each edge */
     foreach (lc, entities)
@@ -3299,7 +3297,7 @@ static FuncCall *prevent_duplicate_edges(cypher_parsestate *cpstate,
         }
     }
 
-    return makeFuncCall(qualified_function_name, edges, COERCE_SQL_SYNTAX, -1);
+    return makeFuncCall(qualified_fname, edges, COERCE_SQL_SYNTAX, -1);
 }
 
 /*
@@ -3379,9 +3377,8 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
     {
         Node *left_id = NULL;
         Node *right_id = NULL;
-        String *ag_catalog = makeString("ag_catalog");
-        String *func_name;
-        List *qualified_func_name;
+        Node *ag_catalog = (Node *) makeString("ag_catalog");
+        List *qualified_fname;
         List *args = NIL;
         List *quals = NIL;
 
@@ -3401,8 +3398,8 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
          */
         if (prev_node->in_join_tree)
         {
-            func_name = makeString("age_match_vle_terminal_edge");
-            qualified_func_name = list_make2(ag_catalog, func_name);
+            qualified_fname = list_make2(ag_catalog,
+                                    makeString("age_match_vle_terminal_edge"));
 
             /*
              * Get the vertex's id and pass to the function. Pass in NULL
@@ -3415,7 +3412,7 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
             args = list_make3(left_id, right_id, entity->expr);
 
             /* add to quals */
-            quals = lappend(quals, makeFuncCall(qualified_func_name, args,
+            quals = lappend(quals, makeFuncCall(qualified_fname, args,
                                                 COERCE_EXPLICIT_CALL, -1));
         }
 
@@ -3430,13 +3427,11 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
             prev_edge->type == ENT_VLE_EDGE)
         {
             List *qualified_name;
-            String *match_qual;
-            FuncCall *fc;
-
-            match_qual = makeString("age_match_two_vle_edges");
+            FuncCall *fc;;
 
             /* make the qualified function name */
-            qualified_name = list_make2(ag_catalog, match_qual);
+            qualified_name = list_make2(ag_catalog,
+                                        makeString("age_match_two_vle_edges"));
 
             /* make the args */
             args = list_make2(prev_edge->expr, entity->expr);
@@ -3573,30 +3568,13 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
 static Node *make_type_cast_to_agtype(Node *arg)
 {
     TypeCast *n = makeNode(TypeCast);
-    String *ag_catalog = makeString("ag_catalog");
-    String *agtype_str = makeString("agtype");
-    List *qualified_name = list_make2(ag_catalog, agtype_str);
+    List *qualified_name = list_make2(makeString("ag_catalog"),
+                                      makeString("agtype"));
 
     n->arg = arg;
     n->typeName = makeTypeNameFromNameList(qualified_name);
     n->location = -1;
     return (Node *) n;
-}
-
-/*
- * Makes an agtype bool node that Postgres' transform expression logic
- * can handle. Used when constructed the join quals for building the paths
- */
-static Node *make_bool_a_const(bool state)
-{
-    A_Const *n = makeNode(A_Const);
-
-    n->val.sval.type = T_String;
-    n->val.sval.sval = (state ? "true" : "false");
-    n->location = -1;
-
-    /* typecast to agtype */
-    return make_type_cast_to_agtype((Node *)n);
 }
 
 /*
@@ -3641,12 +3619,8 @@ static List *join_to_entity(cypher_parsestate *cpstate,
     else if (entity->type == ENT_VLE_EDGE)
     {
         List *qualified_name, *args;
-        String *ag_catalog, *match_qual;
-        bool is_left_side;
+        Node *is_left_side;
         FuncCall *fc;
-
-        ag_catalog = makeString("ag_catalog");
-        match_qual = makeString("age_match_vle_edge_to_id_qual");
 
         /*
          *  tells the function the location of the vle relative to the
@@ -3655,12 +3629,12 @@ static List *join_to_entity(cypher_parsestate *cpstate,
         if (side == JOIN_SIDE_LEFT)
         {
             /* [vle_edge]-()-[regular_edge] */
-            is_left_side = true;
+            is_left_side = makeBoolConst(true, false);
         }
         else if (side == JOIN_SIDE_RIGHT)
         {
             /* [edge]-()-[vle_edge] */
-            is_left_side = false;
+            is_left_side = makeBoolConst(false, false);
         }
         else
         {
@@ -3671,10 +3645,12 @@ static List *join_to_entity(cypher_parsestate *cpstate,
         }
 
         /* make the qualified function name */
-        qualified_name = list_make2(ag_catalog, match_qual);
+        qualified_name = list_make2(makeString("ag_catalog"),
+                                makeString("age_match_vle_edge_to_id_qual"));
 
         /* make the args */
-        args = list_make3(entity->expr, qual, make_bool_a_const(is_left_side));
+        args = list_make3(entity->expr, qual,
+                          make_type_cast_to_agtype(is_left_side));
 
         /* create the function call */
         fc = makeFuncCall(qualified_name, args, COERCE_EXPLICIT_CALL, -1);
@@ -3762,23 +3738,19 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
 {
     label_cache_data *lcd = search_label_name_graph_cache(label,
                                                           cpstate->graph_oid);
-    A_Const *n;
+    Node *n;
     FuncCall *fc;
-    String *ag_catalog, *extract_label_id;
-    int32 label_id = lcd->id;
+    List *fname;
+    List *args;
 
-    n = makeNode(A_Const);
-    n->val.ival.type = T_Integer;
-    n->val.ival.ival = label_id;
-    n->location = -1;
+    n = make_int_const(lcd->id, -1);
+    fname = list_make2(makeString("ag_catalog"),
+                       makeString("_extract_label_id"));
+    args = list_make1(id_field);
 
-    ag_catalog = makeString("ag_catalog");
-    extract_label_id = makeString("_extract_label_id");
+    fc = makeFuncCall(fname, args, COERCE_EXPLICIT_CALL, -1);
 
-    fc = makeFuncCall(list_make2(ag_catalog, extract_label_id),
-                      list_make1(id_field), COERCE_EXPLICIT_CALL, -1);
-
-    return makeSimpleA_Expr(AEXPR_OP, "=", (Node *)fc, (Node *)n, -1);
+    return makeSimpleA_Expr(AEXPR_OP, "=", (Node *)fc, n, -1);
 }
 
 /*
@@ -3885,7 +3857,7 @@ static List *transform_map_to_ind_recursive(cypher_parsestate *cpstate,
         key = (Node *)map->keyvals->elements[i].ptr_value;
         val = (Node *)map->keyvals->elements[i + 1].ptr_value;
         Assert(IsA(key, String));
-        keystr = ((String *)key)->sval;
+        keystr = strVal(key);
 
         if (is_ag_node(val, cypher_map) &&
             list_length(((cypher_map *)val)->keyvals) != 0)
@@ -3989,7 +3961,7 @@ static List *transform_map_to_ind_top_level(cypher_parsestate *cpstate,
         key = (Node *)map->keyvals->elements[i].ptr_value;
         val = (Node *)map->keyvals->elements[i + 1].ptr_value;
         Assert(IsA(key, String));
-        keystr = ((String *)key)->sval;
+        keystr = strVal(key);
 
         op = list_make1(makeString("="));
         variable = makeNode(ColumnRef);
@@ -7583,7 +7555,11 @@ static void handle_prev_clause(cypher_parsestate *cpstate, Query *query,
     }
 
     /* add all the rte's attributes to the current queries targetlist */
+    #if PG_VERSION_NUM >= 150000
     query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
+    #else
+    query->targetList = expandNSItemAttrs(pstate, pnsi, 0, -1);
+    #endif
 }
 
 ParseNamespaceItem *find_pnsi(cypher_parsestate *cpstate, char *varname)

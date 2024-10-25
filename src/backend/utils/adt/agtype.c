@@ -47,6 +47,9 @@
 #include "utils/builtins.h"
 #include "utils/float.h"
 #include "utils/jsonfuncs.h"
+#if PG_VERSION_NUM < 150000
+#include "utils/int8.h"
+#endif
 #include "utils/lsyscache.h"
 #include "utils/snapmgr.h"
 #include "utils/typcache.h"
@@ -1019,7 +1022,11 @@ static void agtype_in_scalar(void *pstate, char *token,
     case AGTYPE_TOKEN_INTEGER:
         Assert(token != NULL);
         v.type = AGTV_INTEGER;
+        #if PG_VERSION_NUM >= 150000
         v.val.int_value = pg_strtoint64(token);
+        #else
+        scanint8(token, false, &v.val.int_value);
+        #endif
         break;
     case AGTYPE_TOKEN_FLOAT:
         Assert(token != NULL);
@@ -6600,7 +6607,9 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
         }
         else if (type == CSTRINGOID || type == TEXTOID)
         {
+            #if PG_VERSION_NUM >= 150000
             char *endptr;
+            #endif
             if (type == CSTRINGOID)
             {
                 string = DatumGetCString(arg);
@@ -6610,17 +6619,24 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
                 string = text_to_cstring(DatumGetTextPP(arg));
             }
 
-            /* convert it if it is a regular integer string */
-            result = strtoi64(string, &endptr, 10);
-
             /*
+             * Convert it if it is a regular integer string
+             *
              * If it isn't an integer string, try converting it as a float
              * string.
              */
+            #if PG_VERSION_NUM >= 150000
+            result = strtoi64(string, &endptr, 10);
+
             result = float8in_internal_null(string, NULL, "double precision",
                                             string, &is_valid);
 
             if (*endptr != '\0')
+            #else
+            is_valid = scanint8(string, true, &result);
+
+            if (!is_valid)
+            #endif
             {
                 float8 f;
 
@@ -6692,18 +6708,27 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
         }
         else if (agtv_value->type == AGTV_STRING)
         {
+            #if PG_VERSION_NUM >= 150000
             char *endptr;
+            #endif
             /* we need a null terminated cstring */
             string = strndup(agtv_value->val.string.val,
                              agtv_value->val.string.len);
-            /* convert it if it is a regular integer string */
-            result = strtoi64(string, &endptr, 10);
-
             /*
+             * Convert it if it is a regular integer string
+             *
              * If it isn't an integer string, try converting it as a float
              * string.
              */
+            #if PG_VERSION_NUM >= 150000
+            result = strtoi64(string, &endptr, 10);
+
             if (*endptr != '\0')
+            #else
+            is_valid = scanint8(string, true, &result);
+
+            if (!is_valid)
+            #endif
             {
                 float8 f;
 

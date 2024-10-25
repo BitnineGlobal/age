@@ -173,7 +173,11 @@ static Oid create_schema_for_graph(const Name graph_name)
     integer = SystemTypeName("int4");
     data_type = makeDefElem("as", (Node *)integer, -1);
     maxvalue = makeDefElem("maxvalue", (Node *)makeInteger(LABEL_ID_MAX), -1);
+    #if PG_VERSION_NUM >= 150000
     cycle = makeDefElem("cycle", (Node *)makeBoolean(true), -1);
+    #else
+    cycle = makeDefElem("cycle", (Node *)makeInteger(true), -1);
+    #endif
     seq_stmt->options = list_make3(data_type, maxvalue, cycle);
     seq_stmt->ownerId = InvalidOid;
     seq_stmt->for_identity = false;
@@ -223,7 +227,7 @@ Datum drop_graph(PG_FUNCTION_ARGS)
 static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
 {
     DropStmt *drop_stmt;
-    String *schema_name;
+    Node *schema_name;
     List *label_id_seq_name;
     DropBehavior behavior;
 
@@ -234,7 +238,7 @@ static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
 
     /* DROP SEQUENCE `graph_name_str`.`LABEL_ID_SEQ_NAME` */
     drop_stmt = makeNode(DropStmt);
-    schema_name = makeString(get_graph_namespace_name(graph_name_str));
+    schema_name = (Node *) makeString(get_graph_namespace_name(graph_name_str));
     label_id_seq_name = list_make2(schema_name, makeString(LABEL_ID_SEQ_NAME));
     drop_stmt->objects = list_make1(label_id_seq_name);
     drop_stmt->removeType = OBJECT_SEQUENCE;

@@ -274,9 +274,15 @@ List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
                                                        transform_cypher_clause,
                                                        &cc, NULL, true, NULL);
 
+            #if PG_VERSION_NUM >= 150000
             target_list = list_concat(target_list,
                                       expandNSItemAttrs(&cpstate->pstate, pnsi,
                                                         0, true, -1));
+            #else
+            target_list = list_concat(target_list,
+                                      expandNSItemAttrs(&cpstate->pstate, pnsi,
+                                                        0, -1));
+            #endif
         }
         else
         {
