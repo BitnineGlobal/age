@@ -105,9 +105,14 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
     #endif
     TM_Result   result;
     CommandId cid = GetCurrentCommandId(true);
-    ResultRelInfo **saved_resultRels = estate->es_result_relations;
 
+    #if PG_VERSION_NUM >= 140000
+    ResultRelInfo **saved_resultRels = estate->es_result_relations;
     estate->es_result_relations = &resultRelInfo;
+    #else
+    ResultRelInfo *saved_resultRels = estate->es_result_relation_info;
+    estate->es_result_relation_info = resultRelInfo;
+    #endif
 
     lockmode = ExecUpdateLockMode(estate, resultRelInfo);
 
@@ -152,7 +157,11 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
             }
 
             ExecCloseIndices(resultRelInfo);
+            #if PG_VERSION_NUM >= 140000
             estate->es_result_relations = saved_resultRels;
+            #else
+            estate->es_result_relation_info = saved_resultRels;
+            #endif
 
             return tuple;
         }
@@ -173,7 +182,11 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
         #else
         if (resultRelInfo->ri_NumIndices > 0 && update_indexes)
         {
+            #if PG_VERSION_NUM >= 140000
             ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate, false, false, NULL, NIL);
+            #else
+            ExecInsertIndexTuples(elemTupleSlot, estate, false, NULL, NIL);
+            #endif
         }
         #endif
 
@@ -196,8 +209,11 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
     }
 
     ReleaseBuffer(buffer);
-
+    #if PG_VERSION_NUM >= 140000
     estate->es_result_relations = saved_resultRels;
+    #else
+    estate->es_result_relation_info = saved_resultRels;
+    #endif
 
     return tuple;
 }
@@ -625,12 +641,16 @@ static void process_update_list(CustomScanState *node)
 static TupleTableSlot *exec_cypher_set(CustomScanState *node)
 {
     cypher_set_custom_scan_state *css = (cypher_set_custom_scan_state *)node;
-    ResultRelInfo **saved_resultRels;
     EState *estate = css->css.ss.ps.state;
     ExprContext *econtext = css->css.ss.ps.ps_ExprContext;
     TupleTableSlot *slot;
-
+    #if PG_VERSION_NUM >= 140000
+    ResultRelInfo **saved_resultRels;
     saved_resultRels = estate->es_result_relations;
+    #else
+    ResultRelInfo *saved_resultRels;
+    saved_resultRels = estate->es_result_relation_info;
+    #endif
 
     /* Process the subtree first */
     Decrement_Estate_CommandId(estate);
@@ -647,7 +667,11 @@ static TupleTableSlot *exec_cypher_set(CustomScanState *node)
 
     if (CYPHER_CLAUSE_IS_TERMINAL(css->flags))
     {
+        #if PG_VERSION_NUM >= 140000
         estate->es_result_relations = saved_resultRels;
+        #else
+        estate->es_result_relation_info = saved_resultRels;
+        #endif
 
         process_all_tuples(node);
 
@@ -661,8 +685,11 @@ static TupleTableSlot *exec_cypher_set(CustomScanState *node)
 
     /* increment the command counter to reflect the updates */
     CommandCounterIncrement();
-
+    #if PG_VERSION_NUM >= 140000
     estate->es_result_relations = saved_resultRels;
+    #else
+    estate->es_result_relation_info = saved_resultRels;
+    #endif
 
     econtext->ecxt_scantuple = ExecProject(node->ss.ps.lefttree->ps_ProjInfo);
 

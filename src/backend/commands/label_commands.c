@@ -419,7 +419,10 @@ static void create_table_for_label(char *graph_name, char *label_name,
     wrapper->stmt_location = -1;
     wrapper->stmt_len = 0;
 
-    ProcessUtility(wrapper, "(generated CREATE TABLE command)", false,
+    ProcessUtility(wrapper, "(generated CREATE TABLE command)",
+                   #if PG_VERSION_NUM >= 140000
+                   false,
+                   #endif
                    PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
                    NULL);
     
@@ -484,7 +487,10 @@ static void create_index_on_column(char *schema_name,
     index_wrapper->stmt_location = -1;
     index_wrapper->stmt_len = 0;
 
-    ProcessUtility(index_wrapper, "(generated CREATE INDEX command)", false,
+    ProcessUtility(index_wrapper, "(generated CREATE INDEX command)",
+                   #if PG_VERSION_NUM >= 140000
+                   false,
+                   #endif
                    PROCESS_UTILITY_SUBCOMMAND, NULL, NULL, None_Receiver,
                    NULL);
 }
@@ -625,7 +631,11 @@ static FuncCall *build_id_default_func_expr(char *graph_name, char *label_name,
                                 makeString("_label_id"));
     label_id_fargs = list_make2(make_string_const(graph_name, -1),
                                 make_string_const(label_name, -1));
+    #if PG_VERSION_NUM >= 140000
     label_id_func = makeFuncCall(label_id_fname, label_id_fargs, COERCE_SQL_SYNTAX, -1);
+    #else
+    label_id_func = makeFuncCall(label_id_fname, label_id_fargs, -1);
+    #endif
 
     /* Build a node that will get the next val from the label's sequence */
     nextval_fname = SystemFuncName("nextval");
@@ -637,7 +647,11 @@ static FuncCall *build_id_default_func_expr(char *graph_name, char *label_name,
     regclass_cast->location = -1;
 
     nextval_fargs = list_make1(regclass_cast);
+    #if PG_VERSION_NUM >= 140000
     nextval_func = makeFuncCall(nextval_fname, nextval_fargs, COERCE_SQL_SYNTAX, -1);
+    #else
+    nextval_func = makeFuncCall(nextval_fname, nextval_fargs, -1);
+    #endif
 
     /*
      * Build a node that constructs the graphid from the label id function
@@ -646,7 +660,11 @@ static FuncCall *build_id_default_func_expr(char *graph_name, char *label_name,
     graphid_fname = list_make2(makeString("ag_catalog"),
                                makeString("_graphid"));
     graphid_fargs = list_make2(label_id_func, nextval_func);
+    #if PG_VERSION_NUM >= 140000
     graphid_func = makeFuncCall(graphid_fname, graphid_fargs, COERCE_SQL_SYNTAX, -1);
+    #else
+    graphid_func = makeFuncCall(graphid_fname, graphid_fargs, -1);
+    #endif
 
     return graphid_func;
 }
@@ -694,7 +712,12 @@ static Constraint *build_properties_default(void)
     /* "ag_catalog"."agtype_build_map"() */
     func_name = list_make2(makeString("ag_catalog"),
                            makeString("agtype_build_map"));
+
+    #if PG_VERSION_NUM >= 140000
     func = makeFuncCall(func_name, NIL, COERCE_SQL_SYNTAX, -1);
+    #else
+    func = makeFuncCall(func_name, NIL, -1);
+    #endif
 
     props_default = makeNode(Constraint);
     props_default->contype = CONSTR_DEFAULT;

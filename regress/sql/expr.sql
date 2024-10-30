@@ -834,12 +834,6 @@ SELECT agtype_in('null::numeric');
 SELECT * FROM cypher('expr', $$
 RETURN ('2:71'::numeric)::numeric
 $$) AS r(result agtype);
-SELECT * FROM cypher('expr', $$
-RETURN ('inf'::numeric)::numeric
-$$) AS r(result agtype);
-SELECT * FROM cypher('expr', $$
-RETURN ('infinity'::numeric)::numeric
-$$) AS r(result agtype);
 -- verify that output can be accepted and reproduced correctly via agtype_in
 SELECT agtype_in('2.71::numeric');
 SELECT agtype_in('[0, {"e": 2.718281::numeric, "one": 1, "pie": 3.1415927}, 2::numeric, null]');

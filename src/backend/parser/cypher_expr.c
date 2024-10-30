@@ -379,15 +379,19 @@ static Node *transform_WholeRowRef(ParseState *pstate, ParseNamespaceItem *pnsi,
      * historically.  One argument for it is that "rel" and "rel.*" mean the
      * same thing for composite relations, so why not for scalar functions...
      */
-     result = makeWholeRowVar(rte, vnum, sublevels_up, true);
+    result = makeWholeRowVar(rte, vnum, sublevels_up, true);
 
-     /* location is not filled in by makeWholeRowVar */
-     result->location = location;
+    /* location is not filled in by makeWholeRowVar */
+    result->location = location;
 
-     /* mark relation as requiring whole-row SELECT access */
-     markVarForSelectPriv(pstate, result);
+    /* mark relation as requiring whole-row SELECT access */
+    #if PG_VERSION_NUM >= 140000
+    markVarForSelectPriv(pstate, result);
+    #else
+    markVarForSelectPriv(pstate, result, rte);
+    #endif
 
-     return (Node *)result;
+    return (Node *)result;
 }
 
 /*
@@ -1680,8 +1684,13 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     }
 
     /* make a function call node */
+    #if PG_VERSION_NUM >= 140000
     fnode = makeFuncCall(fname, list_make1(ctypecast->expr), COERCE_SQL_SYNTAX,
                          ctypecast->location);
+    #else
+    fnode = makeFuncCall(fname, list_make1(ctypecast->expr),
+                         ctypecast->location);
+    #endif
 
     /* return the transformed function */
     return transform_FuncCall(cpstate, fnode);
@@ -1848,7 +1857,11 @@ static Node *wrap_text_output_to_agtype(cypher_parsestate *cpstate,
     fname = list_make2(makeString("ag_catalog"), makeString("text_to_agtype"));
 
     /* the input function is the arg to the new function (wrapper) */
+    #if PG_VERSION_NUM >= 140000
     fnode = makeFuncCall(fname, list_make1(fexpr), COERCE_SQL_SYNTAX, -1);
+    #else
+    fnode = makeFuncCall(fname, list_make1(fexpr), -1);
+    #endif
 
     /* ... and hand off to ParseFuncOrColumn to create it */
     retval = ParseFuncOrColumn(pstate, fname, list_make1(fexpr), last_srf,
@@ -2261,9 +2274,14 @@ static Node *transform_CaseExpr(cypher_parsestate *cpstate, CaseExpr
                 List *funcname = list_make1(makeString("ag_catalog"));
                 funcname = lappend(funcname, makeString("bool_to_agtype"));
 
+                #if PG_VERSION_NUM >= 140000
                 warg = (Node *) makeFuncCall(funcname, list_make1(warg),
                                              COERCE_EXPLICIT_CAST,
                                              cexpr->location);
+                #else
+                warg = (Node *) makeFuncCall(funcname, list_make1(warg),
+                                             cexpr->location);
+                #endif
             }
 
             /* shorthand form was specified, so expand... */
@@ -2286,9 +2304,14 @@ static Node *transform_CaseExpr(cypher_parsestate *cpstate, CaseExpr
             List *funcname = list_make1(makeString("ag_catalog"));
             funcname = lappend(funcname, makeString("bool_to_agtype"));
 
+            #if PG_VERSION_NUM >= 140000
             warg = (Node *) makeFuncCall(funcname, list_make1(warg),
                                          COERCE_EXPLICIT_CAST,
                                          cexpr->location);
+            #else
+            warg = (Node *) makeFuncCall(funcname, list_make1(warg),
+                                         cexpr->location);
+            #endif
         }
 
         neww->result = (Expr *) transform_cypher_expr_recurse(cpstate, warg);

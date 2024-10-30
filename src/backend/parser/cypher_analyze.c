@@ -51,7 +51,12 @@ static void build_explain_query(Query *query, Node *explain_node);
 
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook;
 
-static void post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate);
+static void post_parse_analyze(ParseState *pstate, Query *query
+                               #if PG_VERSION_NUM >= 140000
+                               , JumbleState *jstate
+                               #endif
+);
+
 static bool convert_cypher_walker(Node *node, ParseState *pstate);
 static bool is_rte_cypher(RangeTblEntry *rte);
 static bool is_func_cypher(FuncExpr *funcexpr);
@@ -85,11 +90,19 @@ void post_parse_analyze_fini(void)
     post_parse_analyze_hook = prev_post_parse_analyze_hook;
 }
 
-static void post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
+static void post_parse_analyze(ParseState *pstate, Query *query
+                               #if PG_VERSION_NUM >= 140000
+                               , JumbleState *jstate
+                               #endif
+                               )
 {
     if (prev_post_parse_analyze_hook)
     {
-        prev_post_parse_analyze_hook(pstate, query, jstate);
+        prev_post_parse_analyze_hook(pstate, query
+                                     #if PG_VERSION_NUM >= 140000
+                                     , jstate
+                                     #endif
+                                     );
     }
 
     /*

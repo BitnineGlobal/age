@@ -620,7 +620,11 @@ static Query *transform_cypher_union(cypher_parsestate *cpstate,
 
     nsitem = addRangeTableEntryForJoin(pstate, targetnames, sortnscolumns,
                                        JOIN_INNER, 0, targetvars, NIL, NIL,
-                                       NULL, NULL, false);
+                                       NULL,
+                                       #if PG_VERSION_NUM >= 140000
+                                       NULL,
+                                       #endif
+                                       false);
 
     sv_namespace = pstate->p_namespace;
     pstate->p_namespace = NIL;
@@ -1396,8 +1400,12 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
                 parser_errposition(pstate, self->target->location));
     }
 
+    #if PG_VERSION_NUM >= 140000
     unwind = makeFuncCall(list_make1(makeString("age_unnest")), NIL,
                           COERCE_SQL_SYNTAX, -1);
+    #else
+    unwind = makeFuncCall(list_make1(makeString("age_unnest")), NIL, -1);
+    #endif
 
     old_expr_kind = pstate->p_expr_kind;
     pstate->p_expr_kind = EXPR_KIND_SELECT_TARGET;
@@ -1728,8 +1736,12 @@ cypher_update_information *transform_cypher_set_item_list(
                 qualified_name = list_make2(makeString("ag_catalog"),
                                             makeString("age_properties"));
                 args = list_make1(set_item->expr);
+                #if PG_VERSION_NUM >= 140000
                 set_item->expr = (Node *)makeFuncCall(qualified_name, args,
                                                       COERCE_SQL_SYNTAX, -1);
+                #else
+                set_item->expr = (Node *)makeFuncCall(qualified_name, args, -1);
+                #endif
             }
         }
         else if (!IsA(set_item->prop, A_Indirection))
@@ -2675,7 +2687,9 @@ static RangeTblEntry *transform_cypher_optional_match_clause(cypher_parsestate *
                                         NIL,
                                         NIL,
                                         j->alias,
+                                        #if PG_VERSION_NUM >= 140000
                                         NULL,
+                                        #endif
                                         false);
 
     j->rtindex = jnsitem->p_rtindex;
@@ -3296,8 +3310,11 @@ static FuncCall *prevent_duplicate_edges(cypher_parsestate *cpstate,
             edges = lappend(edges, entity->expr);
         }
     }
-
+    #if PG_VERSION_NUM >= 140000
     return makeFuncCall(qualified_fname, edges, COERCE_SQL_SYNTAX, -1);
+    #else
+    return makeFuncCall(qualified_fname, edges, -1);
+    #endif
 }
 
 /*
@@ -3412,8 +3429,12 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
             args = list_make3(left_id, right_id, entity->expr);
 
             /* add to quals */
+            #if PG_VERSION_NUM >= 140000
             quals = lappend(quals, makeFuncCall(qualified_fname, args,
                                                 COERCE_EXPLICIT_CALL, -1));
+            #else
+            quals = lappend(quals, makeFuncCall(qualified_fname, args, -1));
+            #endif
         }
 
         /*
@@ -3437,7 +3458,11 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
             args = list_make2(prev_edge->expr, entity->expr);
 
             /* create the function call */
+            #if PG_VERSION_NUM >= 140000
             fc = makeFuncCall(qualified_name, args, COERCE_EXPLICIT_CALL, -1);
+            #else
+            fc = makeFuncCall(qualified_name, args, -1);
+            #endif
 
             quals = lappend(quals, fc);
         }
@@ -3653,7 +3678,11 @@ static List *join_to_entity(cypher_parsestate *cpstate,
                           make_type_cast_to_agtype(is_left_side));
 
         /* create the function call */
+        #if PG_VERSION_NUM >= 140000
         fc = makeFuncCall(qualified_name, args, COERCE_EXPLICIT_CALL, -1);
+        #else
+        fc = makeFuncCall(qualified_name, args, -1);
+        #endif
 
         quals = lappend(quals, fc);
 
@@ -3748,7 +3777,11 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
                        makeString("_extract_label_id"));
     args = list_make1(id_field);
 
+    #if PG_VERSION_NUM >= 140000
     fc = makeFuncCall(fname, args, COERCE_EXPLICIT_CALL, -1);
+    #else
+    fc = makeFuncCall(fname, args, -1);
+    #endif
 
     return makeSimpleA_Expr(AEXPR_OP, "=", (Node *)fc, n, -1);
 }
@@ -4465,7 +4498,11 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                     targs = lappend(targs, prop_var);
                     fname = list_make2(makeString("ag_catalog"),
                                        makeString("age_properties"));
+                    #if PG_VERSION_NUM >= 140000
                     fc = makeFuncCall(fname, targs, COERCE_SQL_SYNTAX, -1);
+                    #else
+                    fc = makeFuncCall(fname, targs, -1);
+                    #endif
 
                     /*
                      * Hand off to ParseFuncOrColumn to create the function
@@ -4594,7 +4631,11 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                         targs = lappend(targs, prop_var);
                         fname = list_make2(makeString("ag_catalog"),
                                            makeString("age_properties"));
+                        #if PG_VERSION_NUM >= 140000
                         fc = makeFuncCall(fname, targs, COERCE_SQL_SYNTAX, -1);
+                        #else
+                        fc = makeFuncCall(fname, targs, -1);
+                        #endif
 
                         /*
                          * Hand off to ParseFuncOrColumn to create the function
@@ -4876,8 +4917,12 @@ static Node *make_qual(cypher_parsestate *cpstate,
 
 
         args = list_make1(entity->expr);
+        #if PG_VERSION_NUM >= 140000
         node = (Node *)makeFuncCall(qualified_name, args, COERCE_EXPLICIT_CALL,
                                     -1);
+        #else
+        node = (Node *)makeFuncCall(qualified_name, args, -1);
+        #endif
     }
     else
     {
@@ -6745,7 +6790,10 @@ transform_merge_make_lateral_join(cypher_parsestate *cpstate, Query *query,
     /* make the RTE for the join */
     jnsitem = addRangeTableEntryForJoin(pstate, res_colnames, NULL, j->jointype,
                                         0, res_colvars, NIL, NIL, j->alias,
-                                        NULL, true);
+                                        #if PG_VERSION_NUM >= 140000
+                                        NULL,
+                                        #endif
+                                        true);
 
     j->rtindex = jnsitem->p_rtindex;
 

@@ -37,7 +37,10 @@ static bool prev_object_hook_is_set;
 
 static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
                           int sub_id, void *arg);
-void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, bool readOnlyTree,
+void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString,
+                            #if PG_VERSION_NUM >= 140000
+                            bool readOnlyTree,
+                            #endif
                             ProcessUtilityContext context, ParamListInfo params,
                             QueryEnvironment *queryEnv, DestReceiver *dest,
                             QueryCompletion *qc);
@@ -85,7 +88,10 @@ void process_utility_hook_fini(void)
  * the extension.
  */
 void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString,
-                            bool readOnlyTree, ProcessUtilityContext context,
+                            #if PG_VERSION_NUM >= 140000
+                            bool readOnlyTree,
+                            #endif
+                            ProcessUtilityContext context,
                             ParamListInfo params, QueryEnvironment *queryEnv,
                             DestReceiver *dest, QueryCompletion *qc)
 {
@@ -95,7 +101,12 @@ void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString,
     }
     else if (prev_process_utility_hook)
     {
-        (*prev_process_utility_hook) (pstmt, queryString, readOnlyTree, context,
+        
+        (*prev_process_utility_hook) (pstmt, queryString,
+                                      #if PG_VERSION_NUM >= 140000
+                                      readOnlyTree,
+                                      #endif
+                                      context,
                                       params, queryEnv, dest, qc);
     }
     else
@@ -104,7 +115,11 @@ void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString,
         Assert(pstmt->commandType == CMD_UTILITY);
         Assert(queryString != NULL);	/* required as of 8.4 */
         Assert(qc == NULL || qc->commandTag == CMDTAG_UNKNOWN);
-        standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+        standard_ProcessUtility(pstmt, queryString,
+                                #if PG_VERSION_NUM >= 140000
+                                readOnlyTree,
+                                #endif
+                                context,
                                 params, queryEnv, dest, qc);
     }
 }

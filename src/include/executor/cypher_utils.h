@@ -141,4 +141,8 @@ void get_policies_for_relation(Relation relation, CmdType cmd, Oid user_id,
                                List **permissive_policies,
                                List **restrictive_policies);
 
+#if PG_VERSION_NUM < 140000
+uint32 datum_image_hash(Datum value, bool typByVal, int typLen);
+#endif
+
 #endif

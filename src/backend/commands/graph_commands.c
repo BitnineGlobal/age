@@ -26,6 +26,9 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "parser/parser.h"
+#if PG_VERSION_NUM < 140000
+#include "access/xact.h"
+#endif
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"

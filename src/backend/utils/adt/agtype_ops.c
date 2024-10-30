@@ -31,6 +31,9 @@
 #include "utils/agtype.h"
 #include "utils/datum.h"
 #include "utils/builtins.h"
+#if PG_VERSION_NUM < 140000
+#include "executor/cypher_utils.h"
+#endif
 
 static agtype *agtype_concat_impl(agtype *agt1, agtype *agt2);
 static agtype_value *iterator_concat(agtype_iterator **it1,

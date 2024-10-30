@@ -467,7 +467,11 @@ static List *expand_pnsi_attrs(ParseState *pstate, ParseNamespaceItem *pnsi,
         te_list = lappend(te_list, te);
 
         /* Require read access to each column */
+        #if PG_VERSION_NUM >= 140000
         markVarForSelectPriv(pstate, varnode);
+        #else
+        markVarForSelectPriv(pstate, varnode, rte);
+        #endif
     }
 
     Assert(name == NULL && var == NULL);    /* lists not the same length? */

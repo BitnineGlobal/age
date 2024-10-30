@@ -1914,8 +1914,13 @@ expr_func_subexpr:
     | EXISTS '(' property_value ')'
         {
             FuncCall *n;
+            #if PG_VERSION_NUM >= 140000
             n = makeFuncCall(list_make1(makeString("exists")),
                                     list_make1($3), COERCE_SQL_SYNTAX, @2);
+            #else
+            n = makeFuncCall(list_make1(makeString("exists")),
+                                    list_make1($3), @2);
+            #endif
 
             $$ = (Node *)node_to_agtype((Node *)n, "boolean", @2);
 
@@ -2683,7 +2688,11 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
             funcname = SystemFuncName("count");
 
             /* build the function call */
+            #if PG_VERSION_NUM >= 140000
             fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+            #else
+            fnode = makeFuncCall(funcname, exprs, location);
+            #endif
 
             /* build the cast to wrap the function call to return agtype. */
             fnode = node_to_agtype((Node *)fnode, "integer", location);
@@ -2699,13 +2708,21 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
             funcname = func_name;
 
             /* build the function call */
+            #if PG_VERSION_NUM >= 140000
             fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+            #else
+            fnode = makeFuncCall(funcname, exprs, location);
+            #endif
         }
     }
     /* all other functions are passed as is */
     else
     {
+        #if PG_VERSION_NUM >= 140000
         fnode = makeFuncCall(func_name, exprs, COERCE_SQL_SYNTAX, location);
+        #else
+        fnode = makeFuncCall(func_name, exprs, location);
+        #endif
     }
 
     /* return the node */
@@ -2738,7 +2755,11 @@ static Node *make_star_function_expr(List *func_name, List *exprs, int location)
             funcname = SystemFuncName("count");
 
             /* build the function call */
+            #if PG_VERSION_NUM >= 140000
             fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+            #else
+            fnode = makeFuncCall(funcname, exprs, location);
+            #endif
             fnode->agg_star = true;
 
             /* build the cast to wrap the function call to return agtype. */
@@ -2755,13 +2776,21 @@ static Node *make_star_function_expr(List *func_name, List *exprs, int location)
             funcname = func_name;
 
             /* build the function call */
+            #if PG_VERSION_NUM >= 140000
             fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+            #else
+            fnode = makeFuncCall(funcname, exprs, location);
+            #endif
         }
     }
     /* all other functions are passed as is */
     else
     {
+        #if PG_VERSION_NUM >= 140000
         fnode = makeFuncCall(func_name, exprs, COERCE_SQL_SYNTAX, location);
+        #else
+        fnode = makeFuncCall(func_name, exprs, location);
+        #endif
     }
 
     /* return the node */
@@ -2795,7 +2824,11 @@ static Node *make_distinct_function_expr(List *func_name, List *exprs, int locat
             funcname = SystemFuncName("count");
 
             /* build the function call */
+            #if PG_VERSION_NUM >= 140000
             fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+            #else
+            fnode = makeFuncCall(funcname, exprs, location);
+            #endif
             fnode->agg_order = NIL;
             fnode->agg_distinct = true;
 
@@ -2812,13 +2845,21 @@ static Node *make_distinct_function_expr(List *func_name, List *exprs, int locat
             funcname = func_name;
 
             /* build the function call */
+            #if PG_VERSION_NUM >= 140000
             fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+            #else
+            fnode = makeFuncCall(funcname, exprs, location);
+            #endif
         }
     }
     /* all other functions are passed as is */
     else
     {
+        #if PG_VERSION_NUM >= 140000
         fnode = makeFuncCall(func_name, exprs, COERCE_SQL_SYNTAX, location);
+        #else
+        fnode = makeFuncCall(func_name, exprs, location);
+        #endif
     }
 
     /* return the node */
@@ -2856,7 +2897,11 @@ static FuncCall *node_to_agtype(Node * fnode, char *type, int location)
                              type)));
     }
 
+    #if PG_VERSION_NUM >= 140000
     return makeFuncCall(funcname, list_make1(fnode), COERCE_EXPLICIT_CAST, location);
+    #else
+    return makeFuncCall(funcname, list_make1(fnode), location);
+    #endif
 }
 
 /* function to create a unique name given a prefix */

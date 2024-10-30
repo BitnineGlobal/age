@@ -28,6 +28,9 @@
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "nodes/cypher_nodes.h"
+#if PG_VERSION_NUM < 140000
+#include "executor/cypher_utils.h"
+#endif
 
 /* defines */
 #define GET_GRAPHID_ARRAY_FROM_CONTAINER(vpc) \

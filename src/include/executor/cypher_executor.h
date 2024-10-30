@@ -21,6 +21,9 @@
 #define AG_CYPHER_EXECUTOR_H
 
 #include "nodes/extensible.h"
+#if PG_VERSION_NUM < 140000
+#include "access/xact.h"
+#endif
 
 #define DELETE_SCAN_STATE_NAME "Cypher Delete"
 #define SET_SCAN_STATE_NAME "Cypher Set"

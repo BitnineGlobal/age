@@ -24,6 +24,11 @@
 
 #include "postgres.h"
 
+#if PG_VERSION_NUM < 140000
+#include "access/xact.h"
+#include "access/detoast.h"
+#include "common/hashfn.h"
+#endif
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_relation.h"
@@ -287,9 +292,11 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
         #if PG_VERSION_NUM >= 160000
         ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate,
                               false, false, NULL, NIL, false);
-        #else
+        #elif PG_VERSION_NUM >= 140000
         ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate,
                               false, false, NULL, NIL);
+        #else
+        ExecInsertIndexTuples(elemTupleSlot, estate, false, NULL, NIL);
         #endif
     }
 
@@ -734,3 +741,57 @@ check_role_for_policy(ArrayType *policy_roles, Oid user_id)
 
     return false;
 }
+
+#if PG_VERSION_NUM < 140000
+/*
+ * Copied from PG14
+ * -------------------------------------------------------------------------
+ * datum_image_hash
+ *
+ * Generate a hash value based on the binary representation of 'value'.  Most
+ * use cases will want to use the hash function specific to the Datum's type,
+ * however, some corner cases require generating a hash value based on the
+ * actual bits rather than the logical value.
+ *-------------------------------------------------------------------------
+ */
+uint32 datum_image_hash(Datum value, bool typByVal, int typLen)
+{
+	Size		len;
+	uint32		result;
+
+	if (typByVal)
+		result = hash_bytes((unsigned char *) &value, sizeof(Datum));
+	else if (typLen > 0)
+		result = hash_bytes((unsigned char *) DatumGetPointer(value), typLen);
+	else if (typLen == -1)
+	{
+		struct varlena *val;
+
+		len = toast_raw_datum_size(value);
+
+		val = PG_DETOAST_DATUM_PACKED(value);
+
+		result = hash_bytes((unsigned char *) VARDATA_ANY(val), len - VARHDRSZ);
+
+		/* Only free memory if it's a copy made here. */
+		if ((Pointer) val != (Pointer) value)
+			pfree(val);
+	}
+	else if (typLen == -2)
+	{
+		char	   *s;
+
+		s = DatumGetCString(value);
+		len = strlen(s) + 1;
+
+		result = hash_bytes((unsigned char *) s, len);
+	}
+	else
+	{
+		elog(ERROR, "unexpected typLen: %d", typLen);
+		result = 0;				/* keep compiler quiet */
+	}
+
+	return result;
+}
+#endif

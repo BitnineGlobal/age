@@ -22,6 +22,9 @@
 #include "executor/executor.h"
 #include "utils/jsonfuncs.h"
 #include "common/jsonapi.h"
+#if PG_VERSION_NUM < 140000
+#include "access/xact.h"
+#endif
 
 #include "utils/load/ag_load_edges.h"
 #include "utils/load/ag_load_labels.h"
@@ -339,10 +342,14 @@ void insert_batch(batch_insert_state *batch_state)
                                            batch_state->slots[i],
                                            batch_state->estate, false,
                                            true, NULL, NIL, false);
-            #else
+            #elif PG_VERSION_NUM >= 140000
             result = ExecInsertIndexTuples(batch_state->resultRelInfo,
                                            batch_state->slots[i],
                                            batch_state->estate, false,
+                                           true, NULL, NIL);
+            #else
+            result = ExecInsertIndexTuples(batch_state->slots[i],
+                                           batch_state->estate,
                                            true, NULL, NIL);
             #endif
 
@@ -572,7 +579,11 @@ void init_batch_insert(batch_insert_state **batch_state,
     /* Initialize resultRelInfo */
     resultRelInfo = makeNode(ResultRelInfo);
     InitResultRelInfo(resultRelInfo, relation, 1, NULL, estate->es_instrument);
+    #if PG_VERSION_NUM >= 140000
     estate->es_result_relations = &resultRelInfo;
+    #else
+    estate->es_result_relation_info = resultRelInfo;
+    #endif
 
     /* Open the indices */
     ExecOpenIndices(resultRelInfo, false);
