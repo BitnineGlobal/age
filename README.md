@@ -1,3 +1,4 @@
+
 <br>
 
 <p align="center">
@@ -99,8 +100,9 @@ Apache AGE is :
 Refer to our latest [Apache AGE documentation](https://age.apache.org/age-manual/master/index.html) to learn about installation, features, built-in functions, and  Cypher queries.
 
 
+<h2><img height="30" src="/img/installation.svg">&nbsp;&nbsp; Installation From Source </h2>
 
-<h2><img height="30" src="/img/installation.svg">&nbsp;&nbsp;Pre-Installation</h2>
+<h3><img height="30" src="/img/installation.svg">&nbsp;&nbsp;Install Build Tools</h3>
 
 Install the following essential libraries according to each OS. Building AGE from the source depends on the following Linux libraries (Ubuntu package names shown below):
 
@@ -117,18 +119,14 @@ dnf install gcc glibc bison flex readline readline-devel zlib zlib-devel
 sudo apt-get install build-essential libreadline-dev zlib1g-dev flex bison
 ```
 
-<h2><img height="30" src="/img/installation.svg">&nbsp;&nbsp;Installation</h2>
-
-Apache AGE is intended to be simple to install and run. It can be installed with Docker and other traditional ways. 
-
-<h4><a><img width="20" src="/img/pg.svg"></a>
+<h3><a><img width="20" src="/img/pg.svg"></a>
 &nbsp;Install PostgreSQL
-</h4>
+</h3>
 
 You will need to install an AGE compatible version of Postgres<a>, for now AGE supports Postgres 11, 12, 13, 14, 15 & 16. Supporting the latest versions is on AGE roadmap.
 
 <h4>
-&nbsp;Installation via Package Manager
+&nbsp;Install PostgreSQL via Package Manager
 </h4>
 
 You can use a <a href="https://www.postgresql.org/download/">package management </a> that your OS provides to download PostgreSQL.
@@ -139,16 +137,17 @@ You can use a <a href="https://www.postgresql.org/download/">package management 
 sudo apt install postgresql
 
 ```
+
 <h4>
-&nbsp;Installation From Source Code
+&nbsp;Install PostgreSQL From Source Code
 </h4>
 
 You can <a href="https://www.postgresql.org/ftp/source/"> download the Postgres </a> source code and install your own instance of Postgres. You can read instructions on how to install from source code for different versions on the <a href="https://www.postgresql.org/docs/16/installation.html">official Postgres Website.</a>
 
 
 
-<h4><img width="20" src="/img/tux.svg"><img width="20" src="/img/apple.svg"> &nbsp;Install AGE on Linux and MacOS
-</h4>
+<h3><img width="20" src="/img/tux.svg"><img width="20" src="/img/apple.svg"> &nbsp;Build and Install AGE on Linux and MacOS
+</h3>
 
 Clone the <a href="https://github.com/apache/age">github repository</a> or download the <a href="https://github.com/apache/age/releases">download an official release.
 </a>
@@ -169,10 +168,9 @@ If the path to your Postgres installation is not in the PATH variable, add the p
 make PG_CONFIG=/path/to/postgres/bin/pg_config install
 ```
 
-
-<h4></a><img width="30" src="/img/docker.svg"></a>
+<h2></a><img width="30" src="/img/docker.svg"></a>
 &nbsp;Run using Docker
-</h4>
+</h2>
 
 <h5> Get the docker image </h5>
 
@@ -199,7 +197,25 @@ docker run \
 docker exec -it age psql -d postgresDB -U postgresUser
 ```
 
+<h2></a><img width="30" src="/img/installation.svg"></a>
+&nbsp;Installation from RPM
+</h2>
 
+For production server it is recommend to use pre-built RPMs packages for AGE extension.
+
+<h3>PostgreSQL Installation</h3>
+As a prerequisite, user should have prior installation of PostgreSQL server.  Following command can be used to install used. See <a href="https://www.postgresql.org/download/linux/redhat/">PostgresSQL Red Hat Installation</a> section.
+
+```bash
+dnf install postgresql16-server
+```
+
+<h3>AGE Installation</h3>
+Use following command to install AGE extension.
+
+```bash
+dnf install postgresql16-age-1.5.0-1dev.x86_64.rpm
+```
 
 <h2><img height="20" src="/img/contents.svg">&nbsp;&nbsp;Post Installation</h2>
 
